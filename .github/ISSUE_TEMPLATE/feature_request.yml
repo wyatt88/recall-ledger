@@ -1,0 +1,21 @@
+name: Feature request
+description: Describe a concrete use case or missing contract.
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem or use case
+      description: What agent behavior or integration is currently blocked?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed behavior and alternatives
+    validations:
+      required: true
+  - type: textarea
+    id: validation
+    attributes:
+      label: How should this be validated?
+      description: Suggest a small synthetic example, baseline, or failure condition.

@@ -1,0 +1,39 @@
+name: Bug report
+description: Report a reproducible problem using synthetic data.
+body:
+  - type: markdown
+    attributes:
+      value: |
+        For vulnerabilities, follow SECURITY.md. Do not include private conversations, credentials, database dumps, or private paths.
+  - type: input
+    id: version
+    attributes:
+      label: Version or commit
+    validations:
+      required: true
+  - type: input
+    id: platform
+    attributes:
+      label: Operating system and Rust version
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Minimal synthetic reproduction
+      description: Include commands or code that create a fresh test database.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+      description: Include sanitized errors and whether the operation was retried.
+    validations:
+      required: true

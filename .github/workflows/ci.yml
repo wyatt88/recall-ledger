@@ -1,0 +1,60 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  rust:
+    name: Rust (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Check out source
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - name: Set up Python
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: "3.11"
+      - name: Install stable Rust
+        run: |
+          rustup toolchain install stable --profile minimal --component rustfmt --component clippy
+          rustup default stable
+      - name: Check formatting
+        run: cargo fmt --all -- --check
+      - name: Check lints
+        run: cargo clippy --locked --all-targets -- -D warnings
+      - name: Run tests
+        run: cargo test --locked --all-targets
+      - name: Test Python SDK transport
+        run: PYTHONPATH=sdk/python python3 -m unittest discover -s sdk/python/tests -v
+      - name: Build release binary
+        run: cargo build --release --locked
+      - name: Run synthetic workflow
+        run: bash examples/workflow.sh
+      - name: Run grouping mechanism example
+        run: cargo run --locked --example partition_probe
+  msrv:
+    name: Minimum Rust (1.89.0)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out source
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - name: Install minimum Rust
+        run: rustup toolchain install 1.89.0 --profile minimal
+      - name: Test locked dependencies and code
+        run: cargo +1.89.0 test --locked --all-targets

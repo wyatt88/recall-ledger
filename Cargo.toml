@@ -1,0 +1,27 @@
+[package]
+name = "recall-ledger"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.89"
+description = "Local-first, revision-aware memory infrastructure for agents"
+license = "Apache-2.0"
+repository = "https://github.com/wyatt88/recall-ledger"
+readme = "README.md"
+keywords = ["agent", "memory", "sqlite", "mcp", "provenance"]
+categories = ["database", "command-line-utilities"]
+
+[dependencies]
+clap = { version = "4.5", features = ["derive"] }
+fs2 = "0.4"
+rusqlite = { version = "0.37", features = ["bundled"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.10"
+uuid = { version = "1", features = ["v4"] }
+
+[dev-dependencies]
+tempfile = "3"
+
+[profile.release]
+lto = "thin"
+strip = true

@@ -1,0 +1,11 @@
+RecallLedger
+Copyright 2026 RecallLedger contributors
+
+This product includes software developed by RecallLedger contributors.
+
+The project draws on published research identified in docs/research.md.
+Those citations do not imply author endorsement or incorporation of the
+authors' implementation code, datasets, model weights, or paper text.
+
+Third-party dependencies retain their own licenses. See
+THIRD_PARTY_NOTICES.md and the dependency source distributions.

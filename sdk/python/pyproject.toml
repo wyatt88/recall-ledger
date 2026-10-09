@@ -1,0 +1,14 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "recall-ledger"
+version = "0.1.0"
+description = "Standard-library Unix-socket client for Recall Ledger"
+requires-python = ">=3.9"
+license = {text = "Apache-2.0"}
+dependencies = []
+
+[tool.setuptools]
+packages = ["recall_ledger"]
