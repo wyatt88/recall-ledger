@@ -1,4 +1,4 @@
-# v0.3 contract
+# v0.4 contract
 
 This document describes the source preview. It does not establish production
 readiness, model grounding, or benchmark quality.
@@ -17,10 +17,28 @@ configuration for its clients. Model URLs and namespace cannot be overridden in
 individual requests. `maintain` is restricted to trusted CLI/embedded runtime
 use; socket clients cannot start extra maintenance loops.
 
-IPC uses newline JSON: `{id,method,params}` returns `{id,result}` or `{id,error}`.
+IPC uses newline JSON: `{id,method,params,expected_binding?}` returns
+`{id,result}` or `{id,error}`.
 The frame limit is 1 MiB including the newline. String IDs are limited to 256
 UTF-8 bytes before execution. The SDK uses a separate bounded connection per call.
 MCP stdio connects to an existing daemon and exposes selected tools.
+
+`binding` with empty parameters returns only `{namespace,history_id}`. The
+optional top-level `expected_binding` assertion has exactly those fields and
+a hyphenated UUID history ID. It never selects or changes the daemon namespace.
+`Store::execute_bound` checks it inside each transaction, before operation
+receipts, content reads or writes. `Runtime::execute_bound` propagates it across
+model work and checks it again in the final storage transaction. Mismatch
+returns nonretryable `binding_mismatch`, with no destination identity or body.
+An exact retry cannot obtain a receipt from a differently bound destination.
+
+SDK `Client(..., expected_binding=...)` carries that assertion on every call.
+Local adapters persist it at installation and refuse to silently rebind after
+restoration or socket reassignment. Legacy SDK callers may omit it; they retain
+the old trusted-deployment behavior and lack this misrouting protection.
+`recall-ledger mcp --binding-file PATH` pins a saved identity across restarts.
+Without the file, MCP reads and pins the identity at startup for that process
+only. Neither mode provides authentication against another same-user process.
 
 Errors have `{code, message, retryable}`. Error text from model providers is never
 copied into the error response or task metadata. Public low-level administrative
@@ -97,7 +115,9 @@ See [recovery contracts](recovery.md). Restore requires a new destination,
 changes history identity and revokes old work. It restores the backup time point,
 including content retracted only after that backup. Schema upgrade itself
 does not reset history. Native host integration is described in the
-[Claude Code adapter](claude-code.md).
+[Claude Code](claude-code.md), [local ChatGPT](chatgpt.md), [Codex](codex.md),
+[KiroCrew](kirocrew.md), and [OpenCode](opencode.md) guides. Host acceptance and
+effective privacy routing remain separate from generating configuration.
 
 ## Recall
 

@@ -171,7 +171,12 @@ fn tools() -> Value {
     ]})
 }
 
-fn dispatch(request: Value, phase: &mut Phase, socket: &Path) -> Option<Value> {
+fn dispatch(
+    request: Value,
+    phase: &mut Phase,
+    socket: &Path,
+    binding: Option<&Value>,
+) -> Option<Value> {
     let object = match request.as_object() {
         Some(object) => object,
         None => return Some(error(Value::Null, -32600, "request must be an object")),
@@ -278,7 +283,8 @@ fn dispatch(request: Value, phase: &mut Phase, socket: &Path) -> Option<Value> {
             if !arguments.is_object() {
                 return Some(error(id, -32602, "arguments must be an object"));
             }
-            let (body, is_error) = match transport::request(socket, name, arguments) {
+            let (body, is_error) = match transport::request_bound(socket, name, arguments, binding)
+            {
                 Ok(value) => (value, false),
                 Err(err) => (json!({"error": err}), true),
             };
@@ -295,7 +301,17 @@ fn dispatch(request: Value, phase: &mut Phase, socket: &Path) -> Option<Value> {
     }
 }
 
+#[cfg(test)]
 pub fn run_io(reader: &mut impl BufRead, writer: &mut impl Write, socket: &Path) -> io::Result<()> {
+    run_io_bound(reader, writer, socket, None)
+}
+
+fn run_io_bound(
+    reader: &mut impl BufRead,
+    writer: &mut impl Write,
+    socket: &Path,
+    binding: Option<&Value>,
+) -> io::Result<()> {
     let mut phase = Phase::New;
     loop {
         let frame = match transport::read_frame(reader) {
@@ -310,7 +326,7 @@ pub fn run_io(reader: &mut impl BufRead, writer: &mut impl Write, socket: &Path)
             }
         };
         let response = match serde_json::from_slice::<Value>(&frame) {
-            Ok(request) => dispatch(request, &mut phase, socket),
+            Ok(request) => dispatch(request, &mut phase, socket, binding),
             Err(_) => Some(error(Value::Null, -32700, "invalid JSON")),
         };
         if let Some(response) = response {
@@ -331,8 +347,13 @@ pub fn run_io(reader: &mut impl BufRead, writer: &mut impl Write, socket: &Path)
     }
 }
 
-pub fn run(socket: &Path) -> io::Result<()> {
-    run_io(&mut io::stdin().lock(), &mut io::stdout().lock(), socket)
+pub fn run(socket: &Path, binding: Option<&Value>) -> io::Result<()> {
+    run_io_bound(
+        &mut io::stdin().lock(),
+        &mut io::stdout().lock(),
+        socket,
+        binding,
+    )
 }
 
 #[cfg(test)]

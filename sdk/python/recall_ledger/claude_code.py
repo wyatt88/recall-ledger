@@ -19,7 +19,7 @@ import tempfile
 import time
 from typing import Any, Dict, Optional
 
-from .client import Client, MemoryError, TransportError, MAX_FRAME_BYTES
+from .client import Client, MemoryError, TransportError, MAX_FRAME_BYTES, validate_binding
 
 SCHEMA = "recall-ledger.claude-code/1"
 MAX_SOURCE_BYTES = 2 * 1024 * 1024
@@ -163,21 +163,64 @@ def load_config(project: str, socket_path: Optional[str] = None) -> Dict[str, An
         config = read_json(path)
         if config.get("schema") != SCHEMA or config.get("project") != str(root):
             raise AdapterError("invalid_adapter_config")
+        config_binding(config)
         if socket_path is not None and str(Path(socket_path).expanduser().absolute()) != config["socket"]:
             raise AdapterError("socket_does_not_match_installed_project")
         return config
     if socket_path is None:
         raise AdapterError("adapter_not_installed_use_explicit_socket")
-    return {
+    config = {
         "schema": SCHEMA, "project": str(root), "state": str(state),
         "socket": str(Path(socket_path).expanduser().absolute()),
         "timeout": 10.0, "mode": "lexical", "max_chars": 4000,
         "capture_chars": 8000, "capture_user": True, "capture_assistant": True,
     }
+    # An explicit first --socket command selects a daemon even before hooks are
+    # installed. Persist that selection so later invocations cannot silently
+    # send captured proposals to a different database at the same pathname.
+    with locked(state):
+        if path.exists():
+            # Another first-time command already selected the identity.
+            return load_config(project, socket_path)
+        config["expected_binding"] = Client(config["socket"], timeout=config["timeout"]).binding()
+        atomic_write(path, encode(config))
+    return config
+
+
+def config_binding(config: Dict[str, Any]) -> Dict[str, str]:
+    if "expected_binding" not in config:
+        raise AdapterError("adapter_binding_missing_uninstall_then_reinstall_or_rebind")
+    try:
+        return validate_binding(config["expected_binding"])
+    except ValueError as exc:
+        raise AdapterError("invalid_adapter_binding_reinstall_or_rebind") from exc
+
+
+def check_entry_binding(config: Dict[str, Any], entry: Dict[str, Any]) -> None:
+    """Legacy or foreign queue entries must never acquire a new destination."""
+    if "expected_binding" not in entry:
+        raise AdapterError("outbox_binding_missing_explicit_review_required")
+    try:
+        binding = validate_binding(entry["expected_binding"])
+    except ValueError as exc:
+        raise AdapterError("invalid_outbox_binding_explicit_review_required") from exc
+    if binding != config_binding(config):
+        raise AdapterError("outbox_binding_mismatch_explicit_review_required")
+
+
+def check_client_binding(config: Dict[str, Any], client: Client) -> None:
+    binding = config_binding(config)
+    # Duck-typed injected clients are a test seam. Actual transport clients must
+    # carry the installed identity on every individual connection.
+    if isinstance(client, Client) and client.expected_binding != binding:
+        raise AdapterError("client_binding_does_not_match_installed_project")
 
 
 def client_for(config: Dict[str, Any]) -> Client:
-    return Client(config["socket"], timeout=config["timeout"])
+    return Client(
+        config["socket"], timeout=config["timeout"],
+        expected_binding=config_binding(config),
+    )
 
 
 def install(
@@ -201,11 +244,20 @@ def install(
     }
     with locked(state):
         manifest_path = state / "installation.json"
+        config_path = state / "config.json"
+        prior = read_json(manifest_path) if manifest_path.exists() else {}
+        pinned = None
+        if prior.get("active") and prior.get("uninstall_intent"):
+            raise AdapterError("uninstall_in_progress_retry_uninstall")
+        # An inactive receipt permits a new explicit install to bind again.
+        # An active install or a pre-install migration retains its first choice.
+        if config_path.exists() and (prior.get("active") or not prior):
+            pinned = config_binding(read_json(config_path))
+        config["expected_binding"] = Client(
+            config["socket"], timeout=timeout, expected_binding=pinned,
+        ).binding()
         if manifest_path.exists():
-            prior = read_json(manifest_path)
             if prior.get("active"):
-                if prior.get("uninstall_intent"):
-                    raise AdapterError("uninstall_in_progress_retry_uninstall")
                 current = read_bytes(settings_path) if settings_path.exists() else None
                 if prior.get("after_sha256") == digest(current or b"") and read_json(state / "config.json") == config:
                     return {"installed": True, "already_installed": True, "settings": str(settings_path)}
@@ -265,6 +317,7 @@ def install(
     return {
         "installed": True, "settings": str(settings_path),
         "native_auto_memory": False, "daemon_health_checked": False,
+        "binding_verified": True, "expected_binding": config["expected_binding"],
         "notice": "Project hooks installed; existing rules preserved. Captures remain pending.",
     }
 
@@ -342,21 +395,27 @@ def event_identity(config: Dict[str, Any], event: Dict[str, Any], body: str) -> 
 
 
 def enqueue(config: Dict[str, Any], params: Dict[str, Any], *, allow_quarantined: bool = False) -> bool:
+    binding = config_binding(config)
     folder = Path(config["state"]) / "outbox"
     private_directory(folder)
     path = folder / (digest(params["event_id"].encode()) + ".json")
     dead_letter = Path(config["state"]) / "dead-letter" / path.name
-    if dead_letter.exists() and not allow_quarantined:
-        if read_json(dead_letter)["params"] != params:
+    if dead_letter.exists():
+        item = read_json(dead_letter)
+        check_entry_binding(config, item)
+        if item["params"] != params:
             raise AdapterError("outbox_event_conflict")
-        return False
+        if not allow_quarantined:
+            return False
     if path.exists():
-        if read_json(path)["params"] != params:
+        item = read_json(path)
+        check_entry_binding(config, item)
+        if item["params"] != params:
             raise AdapterError("outbox_event_conflict")
         return False
     if sum(1 for _ in folder.glob("*.json")) >= MAX_OUTBOX:
         raise AdapterError("outbox_full")
-    atomic_write(path, encode({"schema": SCHEMA, "params": params}))
+    atomic_write(path, encode({"schema": SCHEMA, "expected_binding": binding, "params": params}))
     return True
 
 
@@ -380,6 +439,7 @@ def capture(config: Dict[str, Any], event: Dict[str, Any]) -> Optional[str]:
 
 
 def flush_outbox(config: Dict[str, Any], client: Client, *, deadline: float) -> Dict[str, Any]:
+    check_client_binding(config, client)
     folder = Path(config["state"]) / "outbox"
     private_directory(folder)
     delivered = 0
@@ -393,6 +453,7 @@ def flush_outbox(config: Dict[str, Any], client: Client, *, deadline: float) -> 
         client.timeout = min(config["timeout"], remaining)
         try:
             request = read_json(path)
+            check_entry_binding(config, request)
             client.call("candidate_submit", request["params"])
             path.unlink()
             delivered += 1
@@ -409,7 +470,10 @@ def flush_outbox(config: Dict[str, Any], client: Client, *, deadline: float) -> 
             }))
             path.unlink()
             quarantined += 1
-        except (TransportError, OSError, AdapterError):
+        except AdapterError as exc:
+            error = str(exc)
+            break
+        except (TransportError, OSError):
             # Keep exactly the original request/key. A subsequent hook or explicit
             # flush safely retries even when the previous response was lost.
             error = "candidate_delivery_failed"
@@ -445,6 +509,7 @@ def requeue_dead_letter(config: Dict[str, Any], entry: str) -> Dict[str, Any]:
     with locked(Path(config["state"])):
         path = dead_letter_path(config, entry)
         item = read_json(path)
+        check_entry_binding(config, item)
         enqueue(config, item["params"], allow_quarantined=True)
         path.unlink()
     return {"requeued": True, "entry": entry, "event_id": item["params"]["event_id"], "payload_changed": False}
@@ -481,6 +546,7 @@ def run_hook(config: Dict[str, Any], event: Dict[str, Any], client: Optional[Cli
     if name == "UserPromptSubmit" and not isinstance(event.get("prompt"), str):
         raise AdapterError("invalid_prompt")
     client = client or client_for(config)
+    check_client_binding(config, client)
     deadline = time.monotonic() + config["timeout"]
     with locked(Path(config["state"])):
         installation = read_json(Path(config["state"]) / "installation.json")
@@ -511,35 +577,27 @@ def run_hook(config: Dict[str, Any], event: Dict[str, Any], client: Optional[Cli
         params = {"query": query_text(prompt), "limit": 10, "max_chars": config["max_chars"], "mode": config["mode"]}
         if previous.get("commit_token"):
             params["minimum_commit"] = previous["commit_token"]
-        reset = False
         try:
             client.timeout = max(0.1, deadline - time.monotonic())
-            try:
-                result = client.call("recall", params)
-            except MemoryError as exc:
-                if exc.code != "commit_history_mismatch":
-                    raise
-                reset = True
-                params.pop("minimum_commit", None)
-                client.timeout = max(0.1, deadline - time.monotonic())
-                result = client.call("recall", params)
+            result = client.call("recall", params)
             manifest = result.get("manifest")
             if not isinstance(manifest, dict):
                 raise AdapterError("daemon_missing_context_manifest_upgrade_required")
             receipt = {
                 "schema": SCHEMA, "commit_token": result["commit_token"],
-                "manifest": manifest, "history_reset": reset,
+                "manifest": manifest, "history_reset": False,
+                "expected_binding": config_binding(config),
                 "last_event_id": event_id,
             }
             atomic_write(path, encode(receipt))
             packet = {
                 "manifest": manifest, "items": result["items"],
-                "coverage": result.get("coverage"), "history_reset": reset,
+                "coverage": result.get("coverage"), "history_reset": False,
                 "capture": {"admission_policy": "explicit_resolution", "event_id": event_id, **delivery},
             }
             if capture_error:
                 packet["capture"]["error"] = capture_error
-            notice = "RecallLedger history changed; previously injected memory needs revalidation." if reset else None
+            notice = None
             if capture_error or delivery["error"]:
                 notice = "RecallLedger retrieval succeeded; candidate capture/delivery needs attention."
             return hook_output(CONTEXT_PREFIX + encode(packet).decode(), message=notice)
@@ -625,7 +683,7 @@ def migrate(project: str, directory: str, socket_path: Optional[str] = None) -> 
 
 
 def uninstall(project: str, *, enable_native_after_review: bool = False) -> Dict[str, Any]:
-    _, state, settings_path = project_paths(project)
+    root, state, settings_path = project_paths(project)
     with locked(state):
         manifest_path = state / "installation.json"
         manifest = read_json(manifest_path)
@@ -649,21 +707,36 @@ def uninstall(project: str, *, enable_native_after_review: bool = False) -> Dict
         else:
             if current_hash != manifest["after_sha256"]:
                 raise AdapterError("settings_changed_uninstall_refused")
-            config = load_config(project)
-            client = client_for(config)
-            snapshot = client.call("export", {})
-            pending = client.candidate_list(state="pending", limit=100)
+            config = read_json(state / "config.json")
+            if config.get("schema") != SCHEMA or config.get("project") != str(root):
+                raise AdapterError("invalid_adapter_config")
+            legacy = "expected_binding" not in config
+            if legacy:
+                # Explicit legacy uninstall is local-only. An unbound export
+                # could expose an unrelated database now using the socket path.
+                snapshot, pending = None, None
+            else:
+                client = client_for(config)
+                snapshot = client.call("export", {})
+                pending = client.candidate_list(state="pending", limit=100)
             fallback = {
                 "schema": "recall-ledger.claude-fallback/1",
                 "snapshot": snapshot, "pending_metadata": pending,
+                "binding_verified": not legacy,
+                "expected_binding": None if legacy else config_binding(config),
                 "outbox_entries": sum(1 for _ in (state / "outbox").glob("*.json")),
                 "dead_letter_metadata": dead_letters(config),
-                "warning": "Readable current records only, as of the prepared uninstall. "
+                "warning": (
+                    "Legacy daemon binding is unverified. No daemon data was read; "
+                    "snapshot and pending metadata are unavailable. Keep the original "
+                    "database, queue and session files for explicit review before rebinding. "
+                ) if legacy else "Readable current records only, as of the prepared uninstall. "
                            "Retracted/invalid records are absent. "
                            "Pending bodies remain in the database; keep it and the adapter state. "
                            "This artifact is not a restorable backup or a native memory backend.",
             }
-            filename = "fallback-" + digest(str(snapshot["commit_token"]).encode())[:20] + ".json"
+            identity = "legacy:" + manifest["after_sha256"] if legacy else str(snapshot["commit_token"])
+            filename = "fallback-" + digest(identity.encode())[:20] + ".json"
             fallback_path = state / filename
             fallback_data = encode(fallback)
             if len(fallback_data) > MAX_STATE_BYTES:

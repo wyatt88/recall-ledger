@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.4.0 — 2026-10-10
+
+- Pin namespace/history assertions in the storage transaction, before reads,
+  writes and receipt recovery; protect adapters against socket reassignment.
+- Add `binding` CLI/IPC and saved binding support for local stdio MCP.
+- Add local ChatGPT/Codex project hooks with shared installation, pending capture,
+  compaction refresh, privacy policy and recoverable configuration changes.
+- Add a KiroCrew trusted Gateway SDK/CLI bridge with frozen member/store routing.
+- Add an OpenCode v1.18.35 plugin with fresh per-dispatch retrieval and pending
+  capture; ship its JavaScript runtime in the Python wheel.
+- Preserve original destinations across offline queues and reject unbound or
+  foreign queues; prevent concurrent configuration edits being overwritten.
+
+Schema remains 3 and MCP remains stdio with 14 tools. This source preview
+does not claim live host acceptance, automatic Crew V2 replacement or OpenCode
+V2 compatibility. See [validation](docs/VALIDATION-v0.4.md) and
+[review](docs/REVIEW-v0.4.md). ChatGPT here means the local Agent App.
+
 ## 0.3.0 — 2026-10-10
 
 - Capture proposals with source attribution, durable event deduplication,

@@ -33,14 +33,24 @@ jobs:
         run: |
           rustup toolchain install stable --profile minimal --component rustfmt --component clippy
           rustup default stable
+      - name: Set up Node for OpenCode protocol fixtures
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: "22"
       - name: Check formatting
         run: cargo fmt --all -- --check
       - name: Check lints
         run: cargo clippy --locked --all-targets -- -D warnings
       - name: Run tests
         run: cargo test --locked --all-targets
-      - name: Test Python SDK and isolated Claude Code adapter
+      - name: Build Python wheel with local plugin runtime
+        run: python3 -m pip wheel --no-deps --wheel-dir "$RUNNER_TEMP/recall-wheel" ./sdk/python
+      - name: Test Python SDK, local adapters and isolated wheel
+        env:
+          RECALL_LEDGER_WHEEL: ${{ runner.temp }}/recall-wheel/recall_ledger-0.4.0-py3-none-any.whl
         run: PYTHONPATH=sdk/python RECALL_LEDGER_BIN="$PWD/target/debug/recall-ledger" python3 -m unittest discover -s sdk/python/tests -v
+      - name: Test OpenCode protocol fixtures
+        run: node --test integrations/opencode/tests/plugin.test.mjs
       - name: Build release binary
         run: cargo build --release --locked
       - name: Run synthetic workflow

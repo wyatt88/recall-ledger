@@ -1,10 +1,13 @@
 # Integrating native memory and Markdown
 
-Design review: 2026-10-10, updated for v0.3. The
+Design review: 2026-10-10, updated for v0.4. The
 [Claude Code project adapter](claude-code.md), [candidate admission](ingestion.md),
 [managed Markdown and backup/restore](recovery.md), and
 [change/context APIs](CONTRACT.md) now implement a bounded part of this design.
-Fixture and real-daemon tests do not establish live Claude session acceptance.
+Version 0.4 also implements [local ChatGPT](chatgpt.md)/[Codex](codex.md) hooks,
+[OpenCode V1](opencode.md) dispatch integration and a callable [KiroCrew](kirocrew.md)
+Gateway bridge. The Crew bridge requires trusted upstream wiring. Fixture and
+real-daemon tests do not establish live host acceptance.
 Generic framework backends, automatic semantic extraction and arbitrary
 two-way Markdown synchronization remain proposals.
 

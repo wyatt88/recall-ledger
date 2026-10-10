@@ -2,6 +2,8 @@
 /.local-state/
 /.claude/recall-ledger/
 /.claude/settings.local.json
+/.codex/recall-ledger/
+/.opencode/recall-ledger/
 /.venv/
 __pycache__/
 *.py[cod]

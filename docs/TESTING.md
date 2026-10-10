@@ -1,5 +1,9 @@
 # Testing and evidence boundaries
 
+The current [v0.4 validation](VALIDATION-v0.4.md) covers local host adapters,
+database binding, stdio MCP and Python wheel installation. Older execution
+records below are retained as historical observations.
+
 The tests exercise the public `Store::execute` contract using fresh temporary
 databases. They do not mock the Store, reproduce its SQL, or substitute a second
 invalidation implementation as the expected result.

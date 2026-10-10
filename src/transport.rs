@@ -74,10 +74,23 @@ pub fn valid_id(id: &Value) -> bool {
 
 #[cfg(unix)]
 pub fn request(socket: &Path, method: &str, params: Value) -> Result<Value, Error> {
+    request_bound(socket, method, params, None)
+}
+
+#[cfg(unix)]
+pub fn request_bound(
+    socket: &Path,
+    method: &str,
+    params: Value,
+    expected_binding: Option<&Value>,
+) -> Result<Value, Error> {
     use std::io::BufReader;
     use std::os::unix::net::UnixStream;
     use std::time::Duration;
 
+    if let Some(binding) = expected_binding {
+        recall_ledger::validate_binding(binding)?;
+    }
     let mut stream = UnixStream::connect(socket)
         .map_err(|err| failure("transport_unavailable", err.to_string(), true))?;
     let timeout = Some(Duration::from_secs(330));
@@ -86,11 +99,12 @@ pub fn request(socket: &Path, method: &str, params: Value) -> Result<Value, Erro
         .and_then(|()| stream.set_write_timeout(timeout))
         .map_err(|err| failure("transport_error", err.to_string(), true))?;
     let id = uuid::Uuid::new_v4().to_string();
-    write_frame(
-        &mut stream,
-        &json!({"id": id, "method": method, "params": params}),
-    )
-    .map_err(|err| failure("transport_error", err.to_string(), true))?;
+    let mut request = json!({"id": id, "method": method, "params": params});
+    if let Some(binding) = expected_binding {
+        request["expected_binding"] = binding.clone();
+    }
+    write_frame(&mut stream, &request)
+        .map_err(|err| failure("transport_error", err.to_string(), true))?;
     let frame = read_frame(&mut BufReader::new(stream))
         .map_err(|err| failure("transport_error", err.to_string(), true))?
         .ok_or_else(|| failure("transport_error", "daemon closed without a response", true))?;
@@ -125,6 +139,16 @@ pub fn request(socket: &Path, method: &str, params: Value) -> Result<Value, Erro
 
 #[cfg(not(unix))]
 pub fn request(_socket: &Path, _method: &str, _params: Value) -> Result<Value, Error> {
+    request_bound(_socket, _method, _params, None)
+}
+
+#[cfg(not(unix))]
+pub fn request_bound(
+    _socket: &Path,
+    _method: &str,
+    _params: Value,
+    _expected_binding: Option<&Value>,
+) -> Result<Value, Error> {
     Err(failure(
         "unsupported_platform",
         "IPC requires macOS or Linux",
@@ -285,7 +309,7 @@ mod daemon {
         };
         if object
             .keys()
-            .any(|key| !["id", "method", "params"].contains(&key.as_str()))
+            .any(|key| !["id", "method", "params", "expected_binding"].contains(&key.as_str()))
         {
             return json!({"id": id, "error": failure("invalid_request", "unknown envelope field; namespace is pinned by daemon", false)});
         }
@@ -303,7 +327,7 @@ mod daemon {
             return json!({"id": id, "error": failure("unsupported_operation",
                 "Run maintenance through the trusted local CLI or configured daemon worker.", false)});
         }
-        match runtime.execute(namespace, method, params) {
+        match runtime.execute_bound(namespace, method, params, request.get("expected_binding")) {
             Ok(result) => json!({"id": id, "result": result}),
             Err(error) => json!({"id": id, "error": error}),
         }

@@ -16,6 +16,12 @@ implemented. See [the current contract](CONTRACT.md),
 with fixtures and actual local daemon processes; live Claude session acceptance,
 other framework backends, and the research proposals below remain open.
 
+**v0.4 implementation update:** local ChatGPT/Codex hooks, an OpenCode V1
+plugin, a callable KiroCrew Gateway bridge and transaction-level database
+binding are implemented. See [v0.4 validation](VALIDATION-v0.4.md). Live host
+acceptance and Crew upstream wiring remain open; these adapters do not
+establish behavioral superiority over native memory.
+
 **Original review status:** the v0.2 mechanisms were implemented; new interfaces
 below were proposals at the time of review. No new behavioral benchmark, host acceptance run, or performance
 experiment was executed for this document. A roadmap is not a frozen experimental
@@ -46,6 +52,7 @@ Official method descriptions inspected on 2026-10-10:
 
 | System | Relevant existing capability | Consequence for our claims |
 | --- | --- | --- |
+| [KiroCrew Memory V2](kirocrew.md#evidence-and-upstream-seams) | Member/store binding, SQLite, revisions, source-span receipts, atomic consolidation, privacy and backup/restore in the reviewed development specification/source | Use a strong native baseline; Rust, SQLite and tool exposure alone do not establish an advantage |
 | [Letta MemFS](https://docs.letta.com/concepts/memfs) | Git-backed memory, contextual and on-demand files, concurrent background memory work | File-based memory is not inherently unversioned or passive |
 | [Letta shared repositories](https://docs.letta.com/agent-sdk/repositories) | History and content-hash update preconditions; this SDK path requires the cloud backend | Version checks and shared memory are not unique to RecallLedger |
 | [Mem0](https://github.com/mem0ai/mem0) | Its April 2026 method description uses additive extraction, entity linking, and multiple retrieval signals | Compare total cost with a strong accumulation/retrieval strategy, not just repeated summarization |

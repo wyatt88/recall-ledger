@@ -8,10 +8,35 @@ the original method and idempotency key, or retry identical arguments and key.
 import json
 import math
 import socket
+import unicodedata
 import uuid
 from typing import Any, Dict, Optional, Sequence
 
 MAX_FRAME_BYTES = 1024 * 1024
+
+
+def validate_binding(value: Any) -> Dict[str, str]:
+    """Return a detached, strictly shaped daemon identity without its data."""
+    if not isinstance(value, dict) or set(value) != {"namespace", "history_id"}:
+        raise ValueError("expected_binding must contain only namespace and history_id")
+    namespace, history_id = value["namespace"], value["history_id"]
+    if (
+        not isinstance(namespace, str)
+        or not 1 <= len(namespace.encode("utf-8")) <= 256
+        or any(unicodedata.category(char) == "Cc" for char in namespace)
+    ):
+        raise ValueError("binding namespace must be 1..256 UTF-8 bytes without controls")
+    if (
+        not isinstance(history_id, str)
+        or len(history_id) != 36
+        or any(history_id[index] != "-" for index in (8, 13, 18, 23))
+    ):
+        raise ValueError("binding history_id must be a UUID")
+    try:
+        uuid.UUID(history_id)
+    except ValueError as exc:
+        raise ValueError("binding history_id must be a UUID") from exc
+    return {"namespace": namespace, "history_id": history_id}
 
 
 class MemoryError(Exception):
@@ -35,15 +60,28 @@ class TransportError(Exception):
 class Client:
     """Thread-safe client: every call owns a separate bounded socket connection.
 
-    ``socket_path`` chooses an already configured daemon and its pinned namespace.
+    ``socket_path`` chooses an already configured daemon. ``expected_binding``
+    pins its namespace and history identity on every request, including reads
+    and receipt recovery. A socket pathname alone does not establish identity.
     Host application hooks must decide what to record and when to retrieve it.
     """
 
-    def __init__(self, socket_path: str, timeout: float = 330.0):
+    def __init__(
+        self, socket_path: str, timeout: float = 330.0,
+        expected_binding: Optional[Dict[str, str]] = None,
+    ):
         if not math.isfinite(timeout) or timeout <= 0:
             raise ValueError("timeout must be positive and finite")
         self.socket_path = str(socket_path)
         self.timeout = timeout
+        self._expected_binding = (
+            validate_binding(expected_binding) if expected_binding is not None else None
+        )
+
+    @property
+    def expected_binding(self) -> Optional[Dict[str, str]]:
+        """A detached copy; mutating a caller's dictionary cannot rebind a client."""
+        return dict(self._expected_binding) if self._expected_binding is not None else None
 
     def call(self, method: str, params: Optional[Dict[str, Any]] = None) -> Any:
         if not isinstance(method, str) or not method:
@@ -53,9 +91,12 @@ class Client:
         if not isinstance(params, dict) or "namespace" in params:
             raise ValueError("params must be a dict without namespace")
         request_id = str(uuid.uuid4())
+        request = {"id": request_id, "method": method, "params": params}
+        if self._expected_binding is not None:
+            request["expected_binding"] = self.expected_binding
         payload = (
             json.dumps(
-                {"id": request_id, "method": method, "params": params},
+                request,
                 ensure_ascii=False,
                 separators=(",", ":"),
                 allow_nan=False,
@@ -98,6 +139,13 @@ class Client:
             ):
                 raise MemoryError(error["code"], error["message"], error["retryable"])
         raise TransportError("invalid response envelope", outcome_unknown=True)
+
+    def binding(self) -> Dict[str, str]:
+        """Read only namespace/history metadata, for explicit initial binding."""
+        try:
+            return validate_binding(self.call("binding"))
+        except ValueError as exc:
+            raise TransportError("invalid binding response", outcome_unknown=True) from exc
 
     def remember(self, body: str, *, idempotency_key: str, **metadata: Any) -> Any:
         return self.call(

@@ -7,14 +7,16 @@ records. When a source changes, its dependent results stop being readable. A
 worker that finishes late must validate its inputs before it can publish.
 Optional local models provide vector retrieval, automatic summaries, and repair
 of managed summaries after their sources change.
-Version 0.3 adds reviewed candidate ingestion, exact fact identities, durable
-change notifications, consistent backup/restore, and a Claude Code hook adapter.
+Version 0.4 adds local ChatGPT/Codex hooks, a KiroCrew Gateway bridge, and an
+OpenCode V1 plugin. Every adapter pins the intended namespace and database
+history, so a reused socket cannot silently redirect queued memory.
 
 [中文说明](README.zh-CN.md) · [Architecture](docs/architecture.md) ·
 [API contract](docs/CONTRACT.md) · [Operations](docs/OPERATIONS.md) · [Research](docs/research.md) ·
 [Native memory integration](docs/native-memory.md) · [Roadmap](docs/roadmap.md) ·
 [Claude Code setup](docs/claude-code.md) · [Admission](docs/ingestion.md) · [Recovery](docs/recovery.md) ·
-[Contributing](CONTRIBUTING.md)
+[Local ChatGPT](docs/chatgpt.md) · [Codex](docs/codex.md) ·
+[KiroCrew](docs/kirocrew.md) · [OpenCode](docs/opencode.md) · [Contributing](CONTRIBUTING.md)
 
 ## Why this exists
 
@@ -31,7 +33,7 @@ remember → prepare inputs at known revisions → process externally → publis
                                       reject stale publication
 ```
 
-The Claude Code adapter captures pending proposals and reads fresh memory before
+The lifecycle adapters capture pending proposals and read fresh memory before
 each prompt. Explicit acceptance controls admission; conversation text does not
 automatically become verified fact. Execution
 checkpoints, model context, and model weights remain with their existing systems.
@@ -42,14 +44,16 @@ checkpoints, model context, and model weights remain with their existing systems
 repair contract.** Its purpose is to keep a reported correction from leaving
 obsolete managed summaries and vectors available for later use.
 
-Native memory is a broad category. Some hosts already have file search, semantic
+Native memory is a broad category. KiroCrew Memory V2 already specifies SQLite,
+revisions, source-span receipts, atomic consolidation and privacy modes; it is
+a strong comparison baseline, not merely a folder of Markdown files. Some hosts already have file search, semantic
 retrieval, Git history, shared memory, and background consolidation. Markdown is
 a useful editable format; SQLite, Rust, and MCP alone are not reasons to replace
 an existing system.
 
 The useful comparison is what happens when a remembered fact changes:
 
-| Situation | RecallLedger 0.3 mechanism | Benefit within the managed path | Inspectable evidence |
+| Situation | RecallLedger 0.4 mechanism | Benefit within the managed path | Inspectable evidence |
 | --- | --- | --- | --- |
 | A corrected source has summaries derived from summaries | Revision-bound dependency edges and transitive invalidation in the mutation transaction | Descendants stop being served as current; updating only the original note is insufficient | [Core contracts](tests/core_contract.rs) |
 | A slow worker finishes after the correction | `prepare`/`publish` input validation; managed workers also check leases and output revisions | Old work cannot overwrite a newer managed result or revive a withdrawn one | [Maintenance tests](tests/maintenance.rs) |
@@ -59,6 +63,7 @@ The useful comparison is what happens when a remembered fact changes:
 | Semantic indexing or the query model is unavailable | Explicit index coverage, character budgets, and reported lexical degradation | The caller can distinguish reduced retrieval from a complete semantic result | [API contract](docs/CONTRACT.md#recall) |
 | A message corrects an existing fact | Pending candidates, exact scoped fact keys, revision-checked acceptance | Reviewed corrections retain the fact ID and trigger repair | [Admission tests](tests/ingestion.rs) |
 | A packet or Markdown export predates a correction | Body-free change feed, context manifests, live-gated projection reads | Controlled readers detect stale revisions and time expiry | [Freshness](tests/changes.rs), [projection](tests/projection.rs) |
+| A socket starts serving another namespace or database | Persisted `{namespace, history_id}` assertion checked inside each transaction, before reads, receipts and writes | Old queues and sessions refuse the new destination | [Binding](tests/binding.rs), [stdio MCP](tests/mcp_binding.rs) |
 | A database needs recovery | SQLite online backup, new-path restore with a new history identity | Old tokens fail; old leases cannot publish | [Recovery tests](tests/recovery.rs) |
 
 For example, changing “launch in April” to “launch in August” withdraws the
@@ -85,8 +90,10 @@ and refresh after corrections or context compaction.
 | --- | --- | --- |
 | MCP / SDK alongside native memory | Available interfaces; host acceptance still required | Two stores coexist unless the application explicitly routes memory through RecallLedger |
 | Managed Markdown compatibility | Implemented with explicit refresh and a live read gate | RecallLedger owns dynamic records; Markdown is a versioned, rebuildable view |
-| Claude Code project hooks | Implemented; fixture and real-daemon tests, live Claude acceptance pending | Disable native auto memory in the selected project, capture pending proposals, inject fresh recall |
-| Framework-native memory backend | Planned adapters | The framework routes long-term reads and writes through RecallLedger; it keeps its own checkpoints |
+| Claude Code project hooks | Implemented; live host acceptance pending | Disable native auto memory in the selected project, capture pending proposals, inject fresh recall |
+| Local ChatGPT / Codex hooks | Implemented for the documented local Codex runtime; App trust/loading still required | Share one project adapter; disable native memory generation/use in that scope and refresh after compaction |
+| OpenCode V1 plugin | Implemented for v1.18.35; V2 unsupported | Fresh recall before model dispatch, pending capture; host sessions and compaction stay native |
+| KiroCrew trusted Gateway bridge | Implemented callable bridge; upstream wiring required | The framework routes long-term reads and writes through RecallLedger; it keeps its own checkpoints |
 
 Keep human-authored `AGENTS.md`, `CLAUDE.md`, and project rules. Learned facts
 should enter a data channel, with provenance and revision metadata, rather than
@@ -97,7 +104,7 @@ edits, session refresh, and the limits of revoking copies.
 
 ## Current scope
 
-The 0.3 source preview targets one machine:
+The 0.4 source preview targets one machine:
 
 | Available surface | Behavior |
 | --- | --- |
@@ -115,7 +122,7 @@ The 0.3 source preview targets one machine:
 | Candidate admission | Explicit review, durable event deduplication, exact fact-key corrections |
 | Freshness | Durable change cursor, recall manifest, current-context validation |
 | Backup and restore | Consistent SQLite snapshot; new-path, new-history restoration |
-| Markdown and host adapter | Atomic managed generations, stale-read rejection, Claude Code hooks and migration CLI |
+| Markdown and host adapters | Managed projections, Claude Code migration/hooks, local ChatGPT/Codex hooks, Crew Gateway bridge, OpenCode V1 plugin |
 | Experimental grouping | Deterministic grouping rules for later consolidation experiments |
 
 The record store and lexical retrieval work without models. Semantic retrieval
@@ -149,7 +156,7 @@ bash examples/workflow.sh
 Install the current source preview:
 
 ```sh
-cargo install --git https://github.com/wyatt88/recall-ledger.git --tag v0.3.0 --locked
+cargo install --git https://github.com/wyatt88/recall-ledger.git --tag v0.4.0 --locked
 ```
 
 The package has not been published to crates.io or PyPI. The Python SDK ships in
@@ -182,6 +189,11 @@ arguments returns a conflict. Use `operation` to retrieve the original receipt.
 Maintenance passes manage their individual transaction keys internally.
 
 ## Run beside an agent
+
+Choose the [local ChatGPT](docs/chatgpt.md), [Codex](docs/codex.md),
+[KiroCrew](docs/kirocrew.md), or [OpenCode](docs/opencode.md) guide. Crew requires
+trusted Gateway wiring; generated configuration alone does not complete host
+acceptance. All of these paths run locally.
 
 For Claude Code, start a daemon as below, then follow the
 [project adapter installation guide](docs/claude-code.md). It preserves human
@@ -221,14 +233,23 @@ budgets, retries, provider compatibility, and manual maintenance.
 The namespace is selected by trusted transport configuration. Requests cannot
 switch it by adding a namespace field to their parameters.
 
-For an MCP-capable host, configure this stdio command using absolute paths:
+For an MCP-capable host, save its identity once after checking the intended
+daemon, then configure the stdio command using absolute paths:
+
+```sh
+recall-ledger binding --socket /absolute/path/to/memory.sock > /absolute/path/to/binding.json
+```
+
+Keep that file; do not regenerate it on each startup. Without `--binding-file`,
+MCP pins the daemon identity only for its current process lifetime.
 
 ```json
 {
   "mcpServers": {
     "recall-ledger": {
       "command": "/absolute/path/to/recall-ledger",
-      "args": ["mcp", "--socket", "/absolute/path/to/memory.sock"]
+      "args": ["mcp", "--socket", "/absolute/path/to/memory.sock",
+               "--binding-file", "/absolute/path/to/binding.json"]
     }
   }
 }
@@ -323,8 +344,9 @@ CI runs the Rust checks on Ubuntu and macOS. A green test run establishes only
 the cases covered by that run. It does not establish production readiness,
 superior agent task performance, or successful paper reproduction.
 
-[v0.3 validation](docs/VALIDATION-v0.3.md) and [review](docs/REVIEW-v0.3.md)
-cover the new lifecycle paths. [v0.2 validation](docs/VALIDATION-v0.2.md) separates deterministic tests,
+[v0.4 validation](docs/VALIDATION-v0.4.md) and [review](docs/REVIEW-v0.4.md)
+cover local host adapters and transaction-level binding.
+[v0.3 validation](docs/VALIDATION-v0.3.md) retains the earlier lifecycle record. [v0.2 validation](docs/VALIDATION-v0.2.md) separates deterministic tests,
 HTTP stubs, and the real local model smoke. The [review](docs/REVIEW-v0.2.md)
 records independently designed counterexamples and remaining limitations.
 

@@ -5,14 +5,15 @@
 RecallLedger 保存带版本的记录，并追踪每条派生记录使用过的输入。来源修改后，
 依赖它的旧结果停止提供读取；后台任务即使晚到，也必须重新核对输入版本才能发布。
 配置本地模型后，系统还提供向量检索、自动摘要，以及来源变化后的托管摘要修复。
-0.3 新增候选记忆准入、明确事实身份、持久变更通知、一致性备份恢复，
-以及 Claude Code 项目级自动捕获与每轮读取适配器。
+0.4 新增本地 ChatGPT／Codex hooks、KiroCrew Gateway bridge 和 OpenCode V1 插件。
+各适配器固定 namespace 与数据库历史身份，阻止 socket 换绑后把旧记忆队列写入新库。
 
 [English](README.md) · [架构](docs/architecture.md) ·
 [接口契约](docs/CONTRACT.md) · [运行说明](docs/OPERATIONS.md) · [研究依据](docs/research.md) ·
 [原生记忆接管设计](docs/native-memory.md) · [技术路线与验收](docs/roadmap.md) ·
 [Claude Code 接入](docs/claude-code.md) · [候选准入](docs/ingestion.md) · [备份恢复](docs/recovery.md) ·
-[参与贡献](CONTRIBUTING.md)
+[本地 ChatGPT](docs/chatgpt.md) · [Codex](docs/codex.md) ·
+[KiroCrew](docs/kirocrew.md) · [OpenCode](docs/opencode.md) · [参与贡献](CONTRIBUTING.md)
 
 ## 解决什么问题
 
@@ -28,7 +29,7 @@ Agent 记住“项目语言尚未决定”，后台开始生成摘要。随后�
                                拒绝旧任务发布
 ```
 
-Claude Code 适配器将对话捕获为待审候选，并在每轮提示前读取新鲜记忆。
+生命周期适配器将对话捕获为待审候选，并在每轮提示前读取新鲜记忆。
 显式接受后才进入长期召回；对话内容不会自动成为已核实事实。
 执行检查点、模型上下文和模型权重仍由原系统管理。
 
@@ -37,13 +38,14 @@ Claude Code 适配器将对话捕获为待审候选，并在每轮提示前读�
 **RecallLedger 把记忆之间已记录的依赖关系，纳入写入、读取和修复契约。**
 用户纠正一条信息后，系统负责让依赖旧版本的受管摘要和向量停止参与后续读取。
 
-“原生记忆”包含多种实现。有些宿主已经具备文件搜索、语义检索、Git 历史、
+“原生记忆”包含多种实现。KiroCrew Memory V2 已有 SQLite、版本、来源范围回执、
+原子合并与隐私模式，是应认真比较的强基线。有些宿主已经具备文件搜索、语义检索、Git 历史、
 跨 Agent 共享和后台整理。Markdown 本身适合阅读与编辑；换成 SQLite、
 使用 Rust 或增加 MCP，都不足以构成替换理由。
 
 真正需要比较的是：一条记忆发生变化后，系统如何处理已有结果和正在进行的工作。
 
-| 场景 | RecallLedger 0.3 的实现机制 | 受管范围内的作用 | 可检查依据 |
+| 场景 | RecallLedger 0.4 的实现机制 | 受管范围内的作用 | 可检查依据 |
 | --- | --- | --- | --- |
 | 来源被纠正，摘要又被用于生成其他摘要 | 带来源版本的依赖边；修改事务内传递失效 | 相关派生结果停止作为当前记忆返回，不只修改最初那条笔记 | [核心契约测试](tests/core_contract.rs) |
 | 旧任务在纠正后才完成 | `prepare`/`publish` 核验输入；托管 worker 另核租约与输出版本 | 晚到结果不能覆盖新结果，也不能复活已撤回结果 | [维护测试](tests/maintenance.rs) |
@@ -53,6 +55,7 @@ Claude Code 适配器将对话捕获为待审候选，并在每轮提示前读�
 | 向量未建好，或查询模型不可用 | 返回索引覆盖率、字符预算及词法降级标记 | 调用方能识别缺失与降级，决定是否继续任务 | [召回契约](docs/CONTRACT.md#recall) |
 | 新消息纠正同一事实 | 待审候选、精确作用域事实键、版本条件接受 | 审阅后沿用原 ID 修订，触发失效与修复 | [准入测试](tests/ingestion.rs) |
 | 上下文包或 MD 已落后 | 无正文变更流、版本 manifest、实时投影读取门控 | 受控读取可检测版本变化和有效期到期 | [新鲜度](tests/changes.rs)、[投影](tests/projection.rs) |
+| socket 被另一个 namespace 或数据库接管 | 持久 `{namespace, history_id}` 断言；读取、回执和写入前在事务内核对 | 旧队列和会话拒绝新目标 | [绑定](tests/binding.rs)、[stdio MCP](tests/mcp_binding.rs) |
 | 数据库需要恢复 | SQLite 在线备份、新路径与新历史身份恢复 | 旧标记失效，旧租约不能发布 | [恢复测试](tests/recovery.rs) |
 
 例如把“4 月发布”改为“8 月发布”，系统会撤下依赖旧值的托管摘要，拒绝仍使用
@@ -74,8 +77,10 @@ Claude Code 适配器将对话捕获为待审候选，并在每轮提示前读�
 | --- | --- | --- |
 | MCP / SDK 与原生记忆并存 | 接口已有；具体宿主仍需验收 | 未明确改写应用流程时，两套记忆同时存在 |
 | 托管 Markdown 兼容 | 已实现显式刷新与实时读取门控 | 动态记忆由 RecallLedger 管理；MD 是带版本、可重建的视图 |
-| Claude Code 项目 hooks | 已实现；夹具与真实 daemon 测试通过，真实 Claude 会话验收待做 | 关闭所选项目原生自动记忆，捕获候选，每轮新鲜召回 |
-| 框架原生记忆后端 | 适配器待实现 | 长期记忆读写经过 RecallLedger；checkpoint 继续由框架管理 |
+| Claude Code 项目 hooks | 已实现；真实宿主验收待做 | 关闭所选项目原生自动记忆，捕获候选，每轮新鲜召回 |
+| 本地 ChatGPT／Codex hooks | 已实现，要求 App 暴露对应本地运行时；仍需信任与加载检查 | 共用项目适配器，关闭该作用域原生记忆生成和使用，压缩后重新读取 |
+| OpenCode V1 插件 | 已实现，固定 v1.18.35；不支持 V2 | 模型调用前新鲜读取、捕获候选，宿主继续管理会话和压缩 |
+| KiroCrew 可信 Gateway bridge | 已实现可调用桥接，仍需在上游接线 | 长期记忆读写经过 RecallLedger；checkpoint 继续由框架管理 |
 
 用户维护的 `AGENTS.md`、`CLAUDE.md` 和项目规则应保留。自动积累的事实通过
 带来源和版本的参考数据通道加载，不应自动变成行为指令。导出的 MD 需要版本
@@ -84,7 +89,7 @@ Claude Code 适配器将对话捕获为待审候选，并在每轮提示前读�
 
 ## 当前实现范围
 
-0.3 是面向单机的源码预览版：
+0.4 是面向单机的源码预览版：
 
 | 接口或机制 | 当前行为 |
 | --- | --- |
@@ -102,7 +107,7 @@ Claude Code 适配器将对话捕获为待审候选，并在每轮提示前读�
 | 候选准入 | 显式接受或拒绝、事件去重、精确事实键修订 |
 | 鲜度检查 | 持久变更游标、召回 manifest、当前上下文有效性核验 |
 | 备份恢复 | 一致性 SQLite 快照、新路径和新历史身份恢复 |
-| MD 与宿主适配 | 原子投影、陈旧读取拒绝、Claude Code hooks 与迁移命令 |
+| MD 与宿主适配 | 原子投影、Claude Code 迁移与 hooks、本地 ChatGPT／Codex hooks、Crew Gateway bridge、OpenCode V1 插件 |
 | 实验性分组 | 可执行的确定性规则，用于后续整理实验 |
 
 记录存储和字面检索无需模型。语义检索与生成摘要需要自行运行并配置本地模型服务；
@@ -133,7 +138,7 @@ bash examples/workflow.sh
 也可以安装当前源码预览版：
 
 ```sh
-cargo install --git https://github.com/wyatt88/recall-ledger.git --tag v0.3.0 --locked
+cargo install --git https://github.com/wyatt88/recall-ledger.git --tag v0.4.0 --locked
 ```
 
 当前没有发布到 crates.io 或 PyPI，Python SDK 随源码提供。发布物为源码，
@@ -164,6 +169,10 @@ chmod 700 .local-state
 
 ## 与 Agent 一起部署
 
+按宿主选择 [本地 ChatGPT](docs/chatgpt.md)、[Codex](docs/codex.md)、
+[KiroCrew](docs/kirocrew.md) 或 [OpenCode](docs/opencode.md)。这些接入均在本地运行。
+Crew 需要可信 Gateway 接线；配置生成、hook 信任和真实会话验收是不同步骤。
+
 先把 [models.local.json](examples/models.local.json) 中的占位值替换为实际本地
 服务的完整 endpoint、返回的模型名、权重修订标识和向量维度，再启动服务：
 
@@ -188,14 +197,21 @@ worker 自动索引当前记录，并按来源、类型和分组预算整理未�
 预算、重试、手动维护和模型兼容说明见[运行说明](docs/OPERATIONS.md)。
 
 namespace 由可信服务配置指定，调用参数不能覆盖它。MCP 宿主可使用以下配置，
-将两个路径改成实际绝对路径：
+使用实际绝对路径。先核对目标 daemon，再保存身份文件，后续启动沿用它：
+
+```sh
+recall-ledger binding --socket /absolute/path/to/memory.sock > /absolute/path/to/binding.json
+```
+
+不要每次启动重建绑定。省略 `--binding-file` 时，只固定本次 MCP 进程的身份。
 
 ```json
 {
   "mcpServers": {
     "recall-ledger": {
       "command": "/absolute/path/to/recall-ledger",
-      "args": ["mcp", "--socket", "/absolute/path/to/memory.sock"]
+      "args": ["mcp", "--socket", "/absolute/path/to/memory.sock",
+               "--binding-file", "/absolute/path/to/binding.json"]
     }
   }
 }
@@ -274,7 +290,8 @@ PYTHONPATH=sdk/python python3 -m unittest discover -s sdk/python/tests
 CI 在 Ubuntu 和 macOS 执行 Rust 检查。检查通过只能支持实际覆盖的测试用例，
 不等于生产可用性、Agent 任务增益或论文复现。
 
-[v0.3 验证记录](docs/VALIDATION-v0.3.md)和[独立审查](docs/REVIEW-v0.3.md)记录新增链路。
+[v0.4 验证记录](docs/VALIDATION-v0.4.md)和[独立审查](docs/REVIEW-v0.4.md)记录本地适配与绑定检查。
+[v0.3 验证记录](docs/VALIDATION-v0.3.md)保留此前生命周期验证。
 [v0.2 验证记录](docs/VALIDATION-v0.2.md)分开列出确定性测试、HTTP 模拟服务与
 真实本地模型验证；[独立审查](docs/REVIEW-v0.2.md)记录反例与已修问题。
 

@@ -22,6 +22,11 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Command {
+    /// Read the fixed namespace and database history identity of a daemon.
+    Binding {
+        #[arg(long)]
+        socket: PathBuf,
+    },
     /// Create a consistent private SQLite backup at a new path.
     Backup {
         #[arg(long)]
@@ -81,6 +86,9 @@ enum Command {
     Mcp {
         #[arg(long)]
         socket: PathBuf,
+        /// Pin a previously saved namespace/history. Without this, pin at startup.
+        #[arg(long)]
+        binding_file: Option<PathBuf>,
     },
 }
 
@@ -120,6 +128,10 @@ fn print_result(result: &Value) {
 
 fn run(cli: Cli) -> Result<(), recall_ledger::Error> {
     match cli.command {
+        Command::Binding { socket } => {
+            print_result(&transport::request(&socket, "binding", json!({}))?);
+            Ok(())
+        }
         Command::Backup { destination } => {
             print_result(&Store::open(cli.db)?.backup(destination)?);
             Ok(())
@@ -190,9 +202,39 @@ fn run(cli: Cli) -> Result<(), recall_ledger::Error> {
             print_result(&result);
             Ok(())
         }
-        Command::Mcp { socket } => mcp::run(&socket)
-            .map_err(|err| transport::failure("mcp_transport_error", err.to_string(), false)),
+        Command::Mcp {
+            socket,
+            binding_file,
+        } => {
+            let binding = match binding_file {
+                Some(path) => read_binding(&path)?,
+                None => transport::request(&socket, "binding", json!({}))?,
+            };
+            recall_ledger::validate_binding(&binding)?;
+            mcp::run(&socket, Some(&binding))
+                .map_err(|err| transport::failure("mcp_transport_error", err.to_string(), false))
+        }
     }
+}
+
+fn read_binding(path: &std::path::Path) -> recall_ledger::Result<Value> {
+    use std::io::Read;
+    let fail = |message| transport::failure("invalid_binding", message, false);
+    let meta = std::fs::symlink_metadata(path).map_err(|_| fail("binding file unavailable"))?;
+    if !meta.is_file() || meta.len() > 4096 {
+        return Err(fail("binding must be a regular file of at most 4096 bytes"));
+    }
+    let file = std::fs::File::open(path).map_err(|_| fail("binding file unavailable"))?;
+    let mut bytes = Vec::new();
+    file.take(4097)
+        .read_to_end(&mut bytes)
+        .map_err(|_| fail("binding file read failed"))?;
+    if bytes.len() > 4096 {
+        return Err(fail("binding file too large"));
+    }
+    let value = serde_json::from_slice(&bytes).map_err(|_| fail("binding file must be JSON"))?;
+    recall_ledger::validate_binding(&value)?;
+    Ok(value)
 }
 
 fn main() {

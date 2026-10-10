@@ -6,12 +6,22 @@ import os
 from pathlib import Path
 import subprocess
 import tempfile
+import threading
 import time
 import unittest
 from unittest.mock import patch
 
 from recall_ledger import Client, MemoryError, TransportError
 from recall_ledger import claude_code as adapter
+
+BINDING = {
+    "namespace": "fixture",
+    "history_id": "12345678-1234-5678-9234-567812345678",
+}
+OTHER_BINDING = {
+    "namespace": "fixture",
+    "history_id": "87654321-4321-8765-9234-567812345678",
+}
 
 
 class FakeClient:
@@ -64,6 +74,11 @@ class AdapterTests(unittest.TestCase):
         self.socket = str(self.root / "s")
         self.settings = self.project / ".claude" / "settings.local.json"
         self.fake = FakeClient()
+        # Fixture installs discover metadata only; all data operations remain
+        # the explicitly injected FakeClient below.
+        binding_patch = patch.object(Client, "binding", return_value=dict(BINDING))
+        self.binding_lookup = binding_patch.start()
+        self.addCleanup(binding_patch.stop)
 
     def tearDown(self):
         self.temp.cleanup()
@@ -158,17 +173,20 @@ class AdapterTests(unittest.TestCase):
         self.assertEqual(len(self.fake.candidates), 1)
         self.assertEqual(second["capture"]["queued"], 0)
 
-    def test_restore_mismatch_refreshes_without_old_barrier_and_warns(self):
+    def test_history_mismatch_keeps_barrier_and_never_retries_without_it(self):
         config = self.install()
         adapter.run_hook(config, self.event(), self.fake)
+        receipt_path = adapter.session_path(config, "fixture-session")
+        before = receipt_path.read_bytes()
         self.fake.history_mismatch, self.fake.token = True, "restored:2"
         output = adapter.run_hook(config, self.event(body="Next prompt"), self.fake)
-        packet = self.packet(output)
         recalls = [params for method, params in self.fake.calls if method == "recall"]
-        self.assertIn("minimum_commit", recalls[-2])
-        self.assertNotIn("minimum_commit", recalls[-1])
-        self.assertTrue(packet["history_reset"])
-        self.assertIn("history changed", output["systemMessage"])
+        self.assertEqual(len(recalls), 2)
+        self.assertEqual(recalls[-1]["minimum_commit"], "history:1")
+        context = output["hookSpecificOutput"]["additionalContext"]
+        self.assertIn("commit_history_mismatch", context)
+        self.assertNotIn(self.fake.body, context)
+        self.assertEqual(receipt_path.read_bytes(), before)
 
     def test_offline_fails_open_with_outbox_and_no_cached_memory(self):
         config = self.install()
@@ -181,6 +199,184 @@ class AdapterTests(unittest.TestCase):
         outbox = list((Path(config["state"]) / "outbox").glob("*.json"))
         self.assertEqual(len(outbox), 1)
         self.assertEqual(adapter.read_json(outbox[0])["params"]["body"], "Offline proposal")
+        self.assertEqual(adapter.read_json(outbox[0])["expected_binding"], BINDING)
+
+    def test_install_pins_identity_and_every_adapter_client_uses_it(self):
+        config = self.install()
+        self.assertEqual(config["expected_binding"], BINDING)
+        self.assertEqual(adapter.client_for(config).expected_binding, BINDING)
+        with self.assertRaisesRegex(adapter.AdapterError, "client_binding_does_not_match"):
+            adapter.run_hook(config, self.event(), Client(self.socket))
+        self.assertFalse(self.fake.calls)
+
+    def test_failed_install_binding_lookup_preserves_settings_and_does_not_install(self):
+        self.settings.parent.mkdir()
+        before = b'{"custom": true}\n'
+        self.settings.write_bytes(before)
+        with patch.object(Client, "binding", side_effect=TransportError("offline", False)):
+            with self.assertRaises(TransportError):
+                adapter.install(str(self.project), self.socket)
+        self.assertEqual(self.settings.read_bytes(), before)
+        self.assertFalse((self.settings.parent / "recall-ledger" / "config.json").exists())
+        self.assertFalse((self.settings.parent / "recall-ledger" / "installation.json").exists())
+
+    def test_active_install_and_preinstall_selection_do_not_implicitly_rebind(self):
+        for installed in (False, True):
+            with self.subTest(installed=installed):
+                if installed:
+                    self.install()
+                else:
+                    adapter.load_config(str(self.project), self.socket)
+                before = (self.settings.parent / "recall-ledger" / "config.json").read_bytes()
+                seen = []
+
+                def checked_binding(client):
+                    seen.append(client.expected_binding)
+                    raise MemoryError("binding_mismatch", "fixture")
+
+                with patch.object(Client, "binding", checked_binding):
+                    with self.assertRaises(MemoryError):
+                        adapter.install(str(self.project), self.socket)
+                self.assertEqual(seen, [BINDING])
+                self.assertEqual((self.settings.parent / "recall-ledger" / "config.json").read_bytes(), before)
+
+    def test_concurrent_first_socket_commands_share_one_persisted_binding(self):
+        entered = threading.Event()
+        release = threading.Event()
+        results, errors, discoveries = [], [], []
+
+        def discover(client):
+            self.assertIsNone(client.expected_binding)
+            discoveries.append(client.socket_path)
+            entered.set()
+            self.assertTrue(release.wait(2))
+            return dict(BINDING)
+
+        def load():
+            try:
+                results.append(adapter.load_config(str(self.project), self.socket))
+            except Exception as exc:
+                errors.append(exc)
+
+        with patch.object(Client, "binding", discover):
+            first = threading.Thread(target=load)
+            second = threading.Thread(target=load)
+            first.start()
+            self.assertTrue(entered.wait(2))
+            second.start()
+            release.set()
+            first.join(3)
+            second.join(3)
+        self.assertFalse(first.is_alive())
+        self.assertFalse(second.is_alive())
+        self.assertEqual(errors, [])
+        self.assertEqual(discoveries, [self.socket])
+        self.assertEqual(len(results), 2)
+        self.assertEqual(results[0], results[1])
+        self.assertEqual(results[0]["expected_binding"], BINDING)
+        self.assertFalse(self.settings.exists())
+
+    def test_legacy_config_refuses_load_and_active_install_requires_explicit_uninstall(self):
+        config = self.install()
+        config.pop("expected_binding")
+        path = Path(config["state"]) / "config.json"
+        adapter.atomic_write(path, adapter.encode(config))
+        self.binding_lookup.reset_mock()
+        with self.assertRaisesRegex(adapter.AdapterError, "binding_missing.*reinstall"):
+            adapter.load_config(str(self.project))
+        with self.assertRaisesRegex(adapter.AdapterError, "binding_missing.*reinstall"):
+            adapter.install(str(self.project), self.socket)
+        self.binding_lookup.assert_not_called()
+        self.assertFalse(self.fake.calls)
+
+    def test_legacy_uninstall_is_local_only_and_reinstall_never_retargets_old_queue(self):
+        config = self.install()
+        adapter.enqueue(config, {
+            "event_id": "legacy-event", "body": "Keep this proposal", "origin": "user_message",
+            "source": "fixture", "idempotency_key": "legacy-event",
+        })
+        outbox = next((Path(config["state"]) / "outbox").glob("*.json"))
+        legacy_entry = adapter.read_json(outbox)
+        legacy_entry.pop("expected_binding")
+        adapter.atomic_write(outbox, adapter.encode(legacy_entry))
+        config.pop("expected_binding")
+        adapter.atomic_write(Path(config["state"]) / "config.json", adapter.encode(config))
+        before = outbox.read_bytes()
+        with patch.object(adapter, "client_for", side_effect=AssertionError("unbound daemon read")):
+            result = adapter.uninstall(str(self.project))
+        fallback = adapter.read_json(Path(result["fallback"]))
+        self.assertFalse(fallback["binding_verified"])
+        self.assertIsNone(fallback["snapshot"])
+        self.assertIn("No daemon data was read", fallback["warning"])
+        self.assertEqual(outbox.read_bytes(), before)
+        with patch.object(Client, "binding", return_value=dict(OTHER_BINDING)):
+            adapter.install(str(self.project), self.socket)
+        rebound = adapter.load_config(str(self.project))
+        self.assertEqual(rebound["expected_binding"], OTHER_BINDING)
+        result = adapter.flush_outbox(rebound, self.fake, deadline=time.monotonic() + 1)
+        self.assertEqual(result["delivered"], 0)
+        self.assertIn("outbox_binding_missing", result["error"])
+        self.assertEqual(outbox.read_bytes(), before)
+        self.assertFalse(self.fake.calls)
+
+    def test_foreign_or_legacy_outbox_entries_are_preserved_without_any_send(self):
+        config = self.install()
+        for binding in (None, OTHER_BINDING, dict(BINDING, namespace="other")):
+            with self.subTest(binding=binding):
+                adapter.enqueue(config, {
+                    "event_id": "queued", "body": "Original proposal", "origin": "user_message",
+                    "source": "fixture", "idempotency_key": "queued",
+                })
+                path = next((Path(config["state"]) / "outbox").glob("*.json"))
+                entry = adapter.read_json(path)
+                if binding is None:
+                    entry.pop("expected_binding")
+                else:
+                    entry["expected_binding"] = binding
+                adapter.atomic_write(path, adapter.encode(entry))
+                before = path.read_bytes()
+                result = adapter.flush_outbox(config, self.fake, deadline=time.monotonic() + 1)
+                self.assertEqual(result["delivered"], 0)
+                self.assertEqual(result["queued"], 1)
+                self.assertEqual(result["quarantined"], 0)
+                self.assertIn("outbox_binding_", result["error"])
+                self.assertEqual(path.read_bytes(), before)
+                with self.assertRaisesRegex(adapter.AdapterError, "outbox_binding_"):
+                    adapter.enqueue(config, entry["params"])
+                self.assertFalse(self.fake.calls)
+                path.unlink()
+
+    def test_binding_mismatch_preserves_queue_and_injects_no_other_database_body(self):
+        config = self.install()
+        with patch.object(self.fake, "call", side_effect=MemoryError("binding_mismatch", "fixture", False)) as call:
+            output = adapter.run_hook(config, self.event(), self.fake)
+        self.assertEqual([args[0][0] for args in call.call_args_list], ["candidate_submit", "recall"])
+        self.assertIn("binding_mismatch", output["hookSpecificOutput"]["additionalContext"])
+        self.assertNotIn(self.fake.body, output["hookSpecificOutput"]["additionalContext"])
+        self.assertEqual(len(list((Path(config["state"]) / "outbox").glob("*.json"))), 1)
+        self.assertEqual(adapter.dead_letters(config)["total"], 0)
+
+    def test_dead_letter_requeue_cannot_stamp_current_binding_on_old_payload(self):
+        config = self.install()
+        entry = adapter.digest(b"dead-letter-event")
+        path = adapter.dead_letter_path(config, entry)
+        params = {
+            "event_id": "dead-letter-event", "body": "Original proposal", "origin": "user_message",
+            "source": "fixture", "idempotency_key": "dead-letter-event",
+        }
+        for binding in (None, OTHER_BINDING):
+            with self.subTest(binding=binding):
+                item = {"schema": adapter.SCHEMA, "params": params, "error": {"code": "invalid_request"}}
+                if binding is not None:
+                    item["expected_binding"] = binding
+                adapter.atomic_write(path, adapter.encode(item))
+                before = path.read_bytes()
+                with self.assertRaisesRegex(adapter.AdapterError, "outbox_binding_"):
+                    adapter.requeue_dead_letter(config, entry)
+                with self.assertRaisesRegex(adapter.AdapterError, "outbox_binding_"):
+                    adapter.enqueue(config, params, allow_quarantined=True)
+                self.assertEqual(path.read_bytes(), before)
+                self.assertFalse(list((Path(config["state"]) / "outbox").glob("*.json")))
 
     def test_unicode_query_is_byte_bounded_and_capture_is_character_bounded(self):
         config = self.install(capture_chars=256)
@@ -419,6 +615,26 @@ class RealDaemonAdapterTests(unittest.TestCase):
         adapter.install(str(self.project), str(self.socket), timeout=2)
         self.config = adapter.load_config(str(self.project))
 
+    def restart_daemon(self, *, database=None, namespace="fixture"):
+        self.process.terminate()
+        self.process.wait(timeout=5)
+        self.socket.unlink(missing_ok=True)
+        self.process = subprocess.Popen(
+            [os.environ["RECALL_LEDGER_BIN"], "--db", str(database or self.db),
+             "--namespace", namespace, "serve", "--socket", str(self.socket), "--no-worker"],
+            stdout=self.log, stderr=self.log,
+        )
+        deadline = time.monotonic() + 10
+        while time.monotonic() < deadline:
+            if self.process.poll() is not None:
+                self.fail("replacement daemon terminated: " + (self.root / "daemon.log").read_text())
+            try:
+                self.client.binding()
+                return
+            except TransportError:
+                time.sleep(0.025)
+        self.fail("replacement daemon did not start")
+
     def tearDown(self):
         if hasattr(self, "process"):
             self.process.terminate()
@@ -496,6 +712,99 @@ class RealDaemonAdapterTests(unittest.TestCase):
         receipt = adapter.read_json(next((Path(self.config["state"]) / "imports").glob("*.json")))
         self.assertEqual([chunk["part"] for chunk in receipt["chunks"]], [0, 2])
         self.assertEqual((source / "MEMORY.md").read_text(), body)
+
+    def test_offline_hook_flushes_original_request_once_after_same_database_restart(self):
+        old_body = "Rust canonical memory must not be cached during an outage."
+        self.client.remember(old_body, idempotency_key="before-outage-source")
+        online = self.prompt("Rust")["hookSpecificOutput"]["additionalContext"]
+        self.assertIn(old_body, online)
+        pending_before = self.client.candidate_list(state="pending")["total"]
+        receipt_path = adapter.session_path(self.config, "real-daemon-fixture")
+        before_receipt = receipt_path.read_bytes()
+        before_binding = dict(self.config["expected_binding"])
+        self.process.terminate()
+        self.process.wait(timeout=5)
+
+        body = "Offline original proposal 🧠"
+        offline = self.prompt(body)["hookSpecificOutput"]["additionalContext"]
+        self.assertIn("No cached memory body", offline)
+        self.assertNotIn(old_body, offline)
+        self.assertEqual(receipt_path.read_bytes(), before_receipt)
+        paths = list((Path(self.config["state"]) / "outbox").glob("*.json"))
+        self.assertEqual(len(paths), 1)
+        request = adapter.read_json(paths[0])
+        self.assertEqual(request["expected_binding"], before_binding)
+        self.assertEqual(request["params"]["body"], body)
+        original_event = request["params"]["event_id"]
+        original_key = request["params"]["idempotency_key"]
+        self.assertEqual(original_key, original_event)
+
+        self.restart_daemon()
+        bound_client = adapter.client_for(self.config)
+        self.assertEqual(bound_client.expected_binding, before_binding)
+        self.assertEqual(bound_client.binding(), before_binding)
+        with patch.object(bound_client, "call", wraps=bound_client.call) as calls:
+            with adapter.locked(Path(self.config["state"])):
+                first = adapter.flush_outbox(self.config, bound_client, deadline=time.monotonic() + 2)
+                second = adapter.flush_outbox(self.config, bound_client, deadline=time.monotonic() + 2)
+        self.assertEqual(calls.call_count, 1)
+        self.assertEqual(calls.call_args.args, ("candidate_submit", request["params"]))
+        self.assertEqual((first["delivered"], first["queued"], first["quarantined"]), (1, 0, 0))
+        self.assertIsNone(first["error"])
+        self.assertEqual((second["delivered"], second["queued"], second["quarantined"]), (0, 0, 0))
+        self.assertIsNone(second["error"])
+        self.assertFalse(paths[0].exists())
+
+        committed = bound_client.operation("candidate_submit", original_key)
+        self.assertEqual(committed["event_id"], original_event)
+        self.assertEqual(committed["state"], "pending")
+        inspected = bound_client.candidate_inspect(committed["candidate_id"])
+        self.assertEqual(inspected["body"], body)
+        listed = bound_client.candidate_list(state="pending")
+        self.assertEqual(listed["total"], pending_before + 1)
+        self.assertEqual(sum(item["event_id"] == original_event for item in listed["candidates"]), 1)
+
+    def assert_replacement_is_not_used(self, *, namespace, database):
+        self.client.remember("Rust old private memory", idempotency_key="old-source")
+        self.prompt("Rust")  # Establish the old session's commit barrier.
+        adapter.enqueue(self.config, {
+            "event_id": "offline-before-replacement", "body": "Old private proposal",
+            "origin": "user_message", "source": "fixture",
+            "idempotency_key": "offline-before-replacement",
+        })
+        queued = next((Path(self.config["state"]) / "outbox").glob("*.json"))
+        original_queue = queued.read_bytes()
+        receipt = adapter.session_path(self.config, "real-daemon-fixture")
+        original_receipt = receipt.read_bytes()
+        original_settings = (self.project / ".claude" / "settings.local.json").read_bytes()
+        self.restart_daemon(namespace=namespace, database=database)
+        replacement_binding = self.client.binding()
+        self.assertNotEqual(replacement_binding, self.config["expected_binding"])
+        self.client.remember("Rust FOREIGN_DATABASE_BODY", idempotency_key="replacement-source")
+        self.assertEqual(self.client.candidate_list(state="pending")["total"], 0)
+
+        output = self.prompt("Rust")
+        context = output["hookSpecificOutput"]["additionalContext"]
+        self.assertIn("binding_mismatch", context)
+        self.assertNotIn("FOREIGN_DATABASE_BODY", context)
+        self.assertNotIn("Rust old private memory", context)
+        self.assertEqual(self.client.candidate_list(state="pending")["total"], 0)
+        self.assertEqual(queued.read_bytes(), original_queue)
+        self.assertEqual(receipt.read_bytes(), original_receipt)
+        with self.assertRaises(MemoryError) as caught:
+            adapter.uninstall(str(self.project))
+        self.assertEqual(caught.exception.code, "binding_mismatch")
+        self.assertEqual((self.project / ".claude" / "settings.local.json").read_bytes(), original_settings)
+        with self.assertRaises(MemoryError) as caught:
+            adapter.install(str(self.project), str(self.socket), timeout=2)
+        self.assertEqual(caught.exception.code, "binding_mismatch")
+        self.assertEqual(adapter.load_config(str(self.project)), self.config)
+
+    def test_same_socket_different_namespace_cannot_receive_queue_or_return_memory(self):
+        self.assert_replacement_is_not_used(namespace="foreign", database=self.db)
+
+    def test_same_socket_different_history_cannot_receive_queue_or_return_memory(self):
+        self.assert_replacement_is_not_used(namespace="fixture", database=self.root / "other.db")
 
 
 if __name__ == "__main__":

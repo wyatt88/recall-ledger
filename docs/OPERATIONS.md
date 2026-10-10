@@ -1,6 +1,6 @@
 # Running local models and maintenance
 
-RecallLedger 0.3 is a source preview. Run your own OpenAI-compatible embedding
+RecallLedger 0.4 is a source preview. Run your own OpenAI-compatible embedding
 and chat model servers first. The project neither downloads models nor starts a
 cloud service. A record-only deployment needs neither server.
 
@@ -213,6 +213,14 @@ Markdown migration and recoverable settings changes. Its default uninstall
 keeps native auto memory disabled so old notes are not silently reactivated.
 Use [candidate admission](ingestion.md) to review and resolve captured proposals.
 Freshness feeds and manifests are documented in the [contract](CONTRACT.md).
+
+Local [ChatGPT](chatgpt.md) and [Codex](codex.md) share one project hook adapter.
+[OpenCode V1](opencode.md) uses a project plugin; [KiroCrew](kirocrew.md) uses
+a bridge called by trusted Gateway code. Each persists the daemon's namespace
+and history identity and sends it with every operation. A restored database
+has a different history; recover or review the preserved state instead of
+regenerating bindings and automatically replaying old queues. MCP deployments
+should keep a saved `--binding-file` for the same protection across restarts.
 
 Deletion clears managed records and indexes, not physical SQLite pages, model
 server logs, backups, or copies already delivered to agents. Locality alone is

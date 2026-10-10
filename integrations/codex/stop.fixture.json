@@ -1,0 +1,9 @@
+{
+  "hook_event_name": "Stop",
+  "session_id": "synthetic-session",
+  "turn_id": "synthetic-turn-1",
+  "cwd": "/absolute/project",
+  "transcript_path": "/absolute/private/synthetic-session.jsonl",
+  "stop_hook_active": false,
+  "last_assistant_message": "The synthetic implementation uses Rust."
+}

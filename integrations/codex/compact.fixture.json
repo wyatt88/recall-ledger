@@ -1,0 +1,7 @@
+{
+  "hook_event_name": "SessionStart",
+  "session_id": "synthetic-session",
+  "cwd": "/absolute/project",
+  "transcript_path": "/absolute/private/synthetic-session.jsonl",
+  "source": "compact"
+}

@@ -12,6 +12,7 @@ use uuid::Uuid;
 pub struct Runtime {
     store: Store,
     models: Option<Config>,
+    expected_binding: Option<Value>,
 }
 
 impl Runtime {
@@ -19,7 +20,11 @@ impl Runtime {
         if let Some(config) = &models {
             config.validate()?;
         }
-        Ok(Self { store, models })
+        Ok(Self {
+            store,
+            models,
+            expected_binding: None,
+        })
     }
 
     pub fn execute(&mut self, namespace: &str, method: &str, params: Value) -> Result<Value> {
@@ -32,13 +37,13 @@ impl Runtime {
                 let processor = config.summary_key()?;
                 let mut args = params;
                 args["processor"] = json!(processor);
-                let mut result = self.store.execute(namespace, "summary_create", args)?;
+                let mut result = self.store_execute(namespace, "summary_create", args)?;
                 result["receipt_method"] = json!("summary_create");
                 Ok(result)
             }
             "maintain" => self.maintain(namespace, params),
             "status" => {
-                let mut result = self.store.execute(namespace, method, params)?;
+                let mut result = self.store_execute(namespace, method, params)?;
                 let config = self.models.clone().unwrap_or_default();
                 result["capabilities"]["model_calls"] =
                     json!(config.embedding.is_some() || config.summary.is_some());
@@ -51,7 +56,7 @@ impl Runtime {
                     "revision_attestation":"operator_declared"
                 });
                 if let Ok(key) = config.embedding_key() {
-                    let mut progress = self.store.execute(
+                    let mut progress = self.store_execute(
                         namespace,
                         "embedding_status",
                         json!({"model_key":key}),
@@ -66,15 +71,46 @@ impl Runtime {
                 if args.is_object() && args.get("model_key").is_none() {
                     args["model_key"] = json!(self.config()?.embedding_key()?);
                 }
-                self.store.execute(namespace, method, args)
+                self.store_execute(namespace, method, args)
             }
             "operation" if params["method"] == "summarize" => {
                 let mut args = params;
                 args["method"] = json!("summary_create");
-                self.store.execute(namespace, method, args)
+                self.store_execute(namespace, method, args)
             }
-            _ => self.store.execute(namespace, method, params),
+            _ => self.store_execute(namespace, method, params),
         }
+    }
+
+    /// Pin every Store transaction in this runtime operation, including reads
+    /// after model inference. Checking a separate preflight connection is not
+    /// sufficient when a daemon socket has been rebound to another destination.
+    pub fn execute_bound(
+        &mut self,
+        namespace: &str,
+        method: &str,
+        params: Value,
+        expected_binding: Option<&Value>,
+    ) -> Result<Value> {
+        if let Some(binding) = expected_binding {
+            crate::validate_binding(binding)?;
+        }
+        let previous = self.expected_binding.take();
+        self.expected_binding = expected_binding.cloned();
+        let result = (|| {
+            if self.expected_binding.is_some() {
+                // Reject before model work as well as before actual Store use.
+                self.store_execute(namespace, "binding", json!({}))?;
+            }
+            self.execute(namespace, method, params)
+        })();
+        self.expected_binding = previous;
+        result
+    }
+
+    fn store_execute(&mut self, namespace: &str, method: &str, params: Value) -> Result<Value> {
+        self.store
+            .execute_bound(namespace, method, params, self.expected_binding.as_ref())
     }
 
     fn config(&self) -> Result<Config> {
@@ -102,7 +138,7 @@ impl Runtime {
         // The embedded/raw-vector API remains useful for other encoders. Such
         // calls never silently select a configured, potentially different model.
         if params.get("query_vector").is_some() {
-            return self.store.execute(namespace, "recall", params);
+            return self.store_execute(namespace, "recall", params);
         }
         if params.get("model_key").is_some() {
             return Err(Error::new(
@@ -126,7 +162,7 @@ impl Runtime {
         }
         params["mode"] = json!(mode);
         if mode == "lexical" {
-            return self.store.execute(namespace, "recall", params);
+            return self.store_execute(namespace, "recall", params);
         }
         if query.trim().is_empty() {
             return Err(Error::new(
@@ -138,17 +174,17 @@ impl Runtime {
         // work. Re-read after inference; this snapshot is never returned later.
         let mut lexical = params.clone();
         lexical["mode"] = json!("lexical");
-        self.store.execute(namespace, "recall", lexical.clone())?;
+        self.store_execute(namespace, "recall", lexical.clone())?;
         let config = self.config()?;
         let key = config.embedding_key()?;
         match config.embed(&query, "query") {
             Ok(vector) => {
                 params["model_key"] = json!(key);
                 params["query_vector"] = json!(vector);
-                self.store.execute(namespace, "recall", params)
+                self.store_execute(namespace, "recall", params)
             }
             Err(error) if mode == "hybrid" => {
-                let mut result = self.store.execute(namespace, "recall", lexical)?;
+                let mut result = self.store_execute(namespace, "recall", lexical)?;
                 result["coverage"]["requested_mode"] = json!("hybrid");
                 result["coverage"]["degraded"] = json!(true);
                 result["coverage"]["reason"] = json!(error.code);
@@ -193,7 +229,7 @@ impl Runtime {
         // callers choose max_summaries=0 to enqueue only.
         if config.summary.is_some() && auto_min > 0 {
             let processor = config.summary_key()?;
-            let plan = self.store.execute(
+            let plan = self.store_execute(
                 namespace,
                 "plan",
                 json!({"strategy":strategy,"max_group_chars":max_group_chars,"unmanaged_only":true}),
@@ -216,7 +252,7 @@ impl Runtime {
                     "auto-summary-{:x}",
                     Sha256::digest(fingerprint.to_string().as_bytes())
                 );
-                match self.store.execute(
+                match self.store_execute(
                     namespace,
                     "summary_create",
                     json!({"inputs":inputs,"processor":processor,"max_chars":max_summary_chars,
@@ -233,7 +269,7 @@ impl Runtime {
             let processor = config.summary_key()?;
             let worker = format!("local-{}", Uuid::new_v4());
             for _ in 0..max_summaries {
-                let claim = self.store.execute(
+                let claim = self.store_execute(
                     namespace,
                     "maintenance_claim",
                     json!({"worker":worker,"lease_seconds":summary.timeout_seconds+30,
@@ -253,7 +289,7 @@ impl Runtime {
                         // Invalidation can revoke a lease during model work.
                         // In that case the fail operation is itself fenced and
                         // cannot damage the newer generation.
-                        let reported = self.store.execute(
+                        let reported = self.store_execute(
                             namespace,
                             "maintenance_fail",
                             json!({"task_id":task_id,"lease_token":lease,"error_code":error.code,
@@ -267,7 +303,7 @@ impl Runtime {
         }
         if config.embedding.is_some() && max_embeddings > 0 {
             let key = config.embedding_key()?;
-            let candidates = self.store.execute(
+            let candidates = self.store_execute(
                 namespace,
                 "embedding_candidates",
                 json!({"model_key":key,"limit":max_embeddings}),
@@ -277,7 +313,7 @@ impl Runtime {
                 let revision = item["revision"].clone();
                 let attempt = Uuid::new_v4().to_string();
                 match config.embed(string(item, "body")?, "document") {
-                    Ok(vector) => match self.store.execute(
+                    Ok(vector) => match self.store_execute(
                         namespace,
                         "embedding_set",
                         json!({"id":id,"expected_revision":revision,"model_key":key,
@@ -292,7 +328,7 @@ impl Runtime {
                             let recorded = if ["dimension_mismatch", "invalid_vector"]
                                 .contains(&error.code.as_str())
                             {
-                                self.store.execute(
+                                self.store_execute(
                                     namespace,
                                     "embedding_fail",
                                     json!({"id":id,"expected_revision":revision,"model_key":key,
@@ -307,7 +343,7 @@ impl Runtime {
                         }
                     },
                     Err(error) => {
-                        let recorded = self.store.execute(
+                        let recorded = self.store_execute(
                             namespace,
                             "embedding_fail",
                             json!({"id":id,"expected_revision":revision,"model_key":key,
@@ -321,7 +357,7 @@ impl Runtime {
         }
         Ok(json!({
             "actions":actions,"errors":errors,
-            "maintenance":self.store.execute(namespace,"maintenance_status",json!({"limit":100}))?,
+            "maintenance":self.store_execute(namespace,"maintenance_status",json!({"limit":100}))?,
             "status":self.execute(namespace,"status",json!({}))?
         }))
     }
@@ -334,7 +370,7 @@ impl Runtime {
         task_id: &str,
         lease: &str,
     ) -> Result<Value> {
-        let job = self.store.execute(
+        let job = self.store_execute(
             namespace,
             "maintenance_job",
             json!({"task_id":task_id,"lease_token":lease}),
@@ -358,7 +394,7 @@ impl Runtime {
             .collect::<Result<Vec<_>>>()?;
         let max_chars = integer(&job, "max_chars", 2000, 1, 16_384)? as usize;
         let body = config.summarize(&inputs, max_chars)?;
-        self.store.execute(
+        self.store_execute(
             namespace,
             "maintenance_complete",
             json!({"task_id":task_id,"lease_token":lease,"body":body,

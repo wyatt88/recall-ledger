@@ -8,6 +8,11 @@ import unittest
 from recall_ledger import Client, MemoryError, TransportError
 from recall_ledger.client import MAX_FRAME_BYTES
 
+BINDING = {
+    "namespace": "fixture",
+    "history_id": "12345678-1234-5678-9234-567812345678",
+}
+
 
 @unittest.skipUnless(hasattr(socket, "AF_UNIX"), "Unix sockets require macOS or Linux")
 class ClientTests(unittest.TestCase):
@@ -75,6 +80,76 @@ class ClientTests(unittest.TestCase):
     def test_namespace_override_rejected_before_connect(self):
         with self.assertRaises(ValueError):
             self.client.call("recall", {"namespace": "other"})
+
+    def test_binding_metadata_uses_no_parameters_or_implicit_pin(self):
+        def handler(stream, request):
+            self.assertEqual(request["method"], "binding")
+            self.assertEqual(request["params"], {})
+            self.assertNotIn("expected_binding", request)
+            stream.sendall(json.dumps({"id": request["id"], "result": BINDING}).encode() + b"\n")
+
+        self.serve(handler)
+        self.assertEqual(self.client.binding(), BINDING)
+        self.assertIsNone(self.client.expected_binding)
+
+    def test_expected_binding_is_pinned_in_envelope_and_cannot_be_mutated_by_caller(self):
+        selected = dict(BINDING)
+        self.client = Client(self.socket_path, timeout=2, expected_binding=selected)
+        selected["namespace"] = "other"
+        returned = self.client.expected_binding
+        returned["history_id"] = "87654321-4321-8765-9234-567812345678"
+
+        def handler(stream, request):
+            self.assertEqual(request["expected_binding"], BINDING)
+            self.assertNotIn("expected_binding", request["params"])
+            self.assertEqual(request["method"], "operation")
+            stream.sendall(json.dumps({"id": request["id"], "result": {"found": True}}).encode() + b"\n")
+
+        self.serve(handler)
+        self.assertEqual(self.client.operation("remember", "original-key"), {"found": True})
+        self.assertEqual(self.client.expected_binding, BINDING)
+
+    def test_invalid_bindings_rejected_before_connect(self):
+        malformed = [
+            {}, [], {"namespace": "fixture"}, dict(BINDING, extra=True),
+            dict(BINDING, namespace=""), dict(BINDING, namespace="记" * 86),
+            dict(BINDING, namespace="line\nbreak"), dict(BINDING, namespace="\u0085"),
+            dict(BINDING, namespace=1), dict(BINDING, history_id=None),
+            dict(BINDING, history_id="not-a-uuid"),
+            dict(BINDING, history_id="x" * 36),
+            dict(BINDING, history_id="12345678123456789234567812345678"),
+            dict(BINDING, history_id="12345678123456789234567812345678----"),
+        ]
+        for binding in malformed:
+            with self.subTest(binding=binding), self.assertRaises(ValueError):
+                Client(self.socket_path, expected_binding=binding)
+        self.assertEqual(
+            Client(self.socket_path, expected_binding=dict(BINDING, namespace="记" * 85 + "a")).expected_binding["namespace"],
+            "记" * 85 + "a",
+        )
+
+    def test_invalid_binding_response_is_not_accepted(self):
+        def handler(stream, request):
+            stream.sendall(json.dumps({"id": request["id"], "result": {"namespace": "fixture"}}).encode() + b"\n")
+
+        self.serve(handler)
+        with self.assertRaisesRegex(TransportError, "invalid binding response"):
+            self.client.binding()
+
+    def test_binding_mismatch_preserves_nonretryable_error(self):
+        self.client = Client(self.socket_path, timeout=2, expected_binding=BINDING)
+
+        def handler(stream, request):
+            self.assertEqual(request["expected_binding"], BINDING)
+            stream.sendall(json.dumps({"id": request["id"], "error": {
+                "code": "binding_mismatch", "message": "daemon identity differs", "retryable": False,
+            }}).encode() + b"\n")
+
+        self.serve(handler)
+        with self.assertRaises(MemoryError) as caught:
+            self.client.remember("Do not redirect this write", idempotency_key="original-key")
+        self.assertEqual(caught.exception.code, "binding_mismatch")
+        self.assertFalse(caught.exception.retryable)
 
     def test_oversized_request_rejected_before_connect(self):
         with self.assertRaises(ValueError):

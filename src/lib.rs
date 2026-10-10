@@ -224,12 +224,28 @@ impl Store {
     /// Execute a JSON command under a trusted namespace selected by the caller.
     /// Namespace separates data in the API; it is not authentication or OS isolation.
     pub fn execute(&mut self, namespace: &str, method: &str, arguments: Value) -> Result<Value> {
+        self.execute_bound(namespace, method, arguments, None)
+    }
+
+    /// Assert the caller's pinned destination in the same transaction that reads
+    /// content, returns an idempotency receipt, or writes. This is a deployment
+    /// mix-up guard, not authentication against a malicious local process.
+    pub fn execute_bound(
+        &mut self,
+        namespace: &str,
+        method: &str,
+        arguments: Value,
+        expected_binding: Option<&Value>,
+    ) -> Result<Value> {
         validate_name(namespace, "namespace")?;
+        if let Some(binding) = expected_binding {
+            validate_binding(binding)?;
+        }
         let args = arguments
             .as_object()
             .ok_or_else(|| Error::new("invalid_request", "params must be an object."))?;
         let allowed: &[&str] = match method {
-            "status" | "export" => &[],
+            "binding" | "status" | "export" => &[],
             "changes" => &["after", "limit"],
             "validate_context" => &["manifest"],
             "remember" => &[
@@ -315,6 +331,9 @@ impl Store {
         } else {
             TransactionBehavior::Deferred
         })?;
+        if let Some(binding) = expected_binding {
+            check_binding(&tx, namespace, binding)?;
+        }
         let at = now();
         let result = if mutation {
             let key = string(&arguments, "idempotency_key")?;
@@ -369,6 +388,47 @@ impl Store {
         tx.commit()?;
         Ok(result)
     }
+}
+
+/// Validate an IPC binding without opening a database or returning its identity.
+pub fn validate_binding(binding: &Value) -> Result<()> {
+    let object = binding
+        .as_object()
+        .ok_or_else(|| Error::new("invalid_request", "expected_binding must be an object."))?;
+    if object.len() != 2 || !object.contains_key("namespace") || !object.contains_key("history_id")
+    {
+        return Err(Error::new(
+            "invalid_request",
+            "expected_binding requires only namespace and history_id.",
+        ));
+    }
+    validate_name(string(binding, "namespace")?, "binding namespace")?;
+    let history = string(binding, "history_id")?;
+    if history.len() != 36 || Uuid::parse_str(history).is_err() {
+        return Err(Error::new(
+            "invalid_request",
+            "expected_binding history_id must be a UUID.",
+        ));
+    }
+    Ok(())
+}
+
+fn binding(db: &Connection, namespace: &str) -> Result<Value> {
+    let history: String =
+        db.query_row("SELECT value FROM meta WHERE key='store_id'", [], |row| {
+            row.get(0)
+        })?;
+    Ok(json!({"namespace":namespace,"history_id":history}))
+}
+
+fn check_binding(db: &Connection, namespace: &str, expected: &Value) -> Result<()> {
+    if expected != &binding(db, namespace)? {
+        return Err(Error::new(
+            "binding_mismatch",
+            "Memory destination changed; explicitly rebind before using this store.",
+        ));
+    }
+    Ok(())
 }
 
 fn now() -> i64 {
@@ -856,6 +916,7 @@ fn readable(db: &Connection, ns: &str, at: i64) -> Result<Vec<Record>> {
 }
 fn read(db: &Connection, ns: &str, method: &str, v: &Value, at: i64) -> Result<Value> {
     match method {
+        "binding" => binding(db, ns),
         "status" => {
             let count: i64 = db.query_row(
                 "SELECT count(*) FROM records WHERE namespace=?1",

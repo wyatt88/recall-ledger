@@ -1,0 +1,8 @@
+{
+  "hook_event_name": "UserPromptSubmit",
+  "session_id": "synthetic-session",
+  "turn_id": "synthetic-turn-1",
+  "cwd": "/absolute/project",
+  "transcript_path": "/absolute/private/synthetic-session.jsonl",
+  "prompt": "Use Rust for this synthetic project."
+}
