@@ -250,6 +250,11 @@ The core can enforce its local contract without a model. Whether using the
 resulting memory improves task outcomes requires a separate comparison with a
 strong native-store baseline, equal processing budgets, and independent tasks.
 
+The [native memory design](native-memory.md) defines proposed ownership,
+Markdown projection, and context-refresh behavior. Those adapters are not
+implemented in v0.2. The [roadmap](roadmap.md) separates this integration work
+from applicability checks, research hypotheses, and behavioral acceptance gates.
+
 ## Future work
 
 Features that are not supplied by 0.2 include:

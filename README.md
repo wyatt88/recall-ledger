@@ -10,6 +10,7 @@ of managed summaries after their sources change.
 
 [中文说明](README.zh-CN.md) · [Architecture](docs/architecture.md) ·
 [API contract](docs/CONTRACT.md) · [Operations](docs/OPERATIONS.md) · [Research](docs/research.md) ·
+[Native memory integration](docs/native-memory.md) · [Roadmap](docs/roadmap.md) ·
 [Contributing](CONTRIBUTING.md)
 
 ## Why this exists
@@ -27,9 +28,64 @@ remember → prepare inputs at known revisions → process externally → publis
                                       reject stale publication
 ```
 
-This can back an agent framework's existing long-term memory interface. It does
-not replace the framework's execution checkpoints, model context, or model weights.
-An external process does not inherently improve an agent's reasoning.
+An adapter can use this contract behind a framework's long-term memory interface;
+0.2 does not ship a drop-in replacement for native host memory. Execution
+checkpoints, model context, and model weights remain with their existing systems.
+
+## What RecallLedger adds to native memory
+
+**RecallLedger makes recorded memory dependencies part of the write, read, and
+repair contract.** Its purpose is to keep a reported correction from leaving
+obsolete managed summaries and vectors available for later use.
+
+Native memory is a broad category. Some hosts already have file search, semantic
+retrieval, Git history, shared memory, and background consolidation. Markdown is
+a useful editable format; SQLite, Rust, and MCP alone are not reasons to replace
+an existing system.
+
+The useful comparison is what happens when a remembered fact changes:
+
+| Situation | RecallLedger 0.2 mechanism | Benefit within the managed path | Inspectable evidence |
+| --- | --- | --- | --- |
+| A corrected source has summaries derived from summaries | Revision-bound dependency edges and transitive invalidation in the mutation transaction | Descendants stop being served as current; updating only the original note is insufficient | [Core contracts](tests/core_contract.rs) |
+| A slow worker finishes after the correction | `prepare`/`publish` input validation; managed workers also check leases and output revisions | Old work cannot overwrite a newer managed result or revive a withdrawn one | [Maintenance tests](tests/maintenance.rs) |
+| A stale vector still scores highly | Embeddings bind to record revision and model key; recall enforces eligibility | Similarity cannot authorize an outdated record | [Vector contracts](tests/vector_contract.rs) |
+| A write succeeds but its reply is lost | Mutation and idempotency receipt commit together; edits require `expected_revision` | Identical retries recover the result; competing edits receive a conflict | [Core contracts](tests/core_contract.rs) |
+| A summary needs rebuilding after a restart | Persistent recipes, task generations, leases, bounded retries, stable output IDs | Managed repair resumes without making obsolete text readable while repair fails | [Runtime tests](tests/runtime_contract.rs) |
+| Semantic indexing or the query model is unavailable | Explicit index coverage, character budgets, and reported lexical degradation | The caller can distinguish reduced retrieval from a complete semantic result | [API contract](docs/CONTRACT.md#recall) |
+
+For example, changing “launch in April” to “launch in August” withdraws the
+managed summary that used April, rejects any outstanding generation using that
+revision, and queues a repair using the new input. The repaired summary retains
+its ID with a new revision. This behavior was exercised in the
+[local v0.2 model smoke](docs/VALIDATION-v0.2.md#real-local-model-smoke).
+It does not prove that every generated summary is faithful or that an Agent
+already holding April in its prompt will forget it.
+
+These are implemented lifecycle properties, **not a demonstrated accuracy,
+latency, or cost win over native memory**. A native system can implement the same
+contracts. For small, stable workloads, files plus good search may be simpler.
+The [roadmap](docs/roadmap.md) defines the comparisons required to establish a
+meaningful advantage.
+
+## What happens to MEMORY.md?
+
+Adding MCP tools leaves the host's existing memory behavior in place. To make
+RecallLedger authoritative, a host adapter must control memory capture, reads,
+and refresh after corrections or context compaction.
+
+| Integration level | Status | Ownership |
+| --- | --- | --- |
+| MCP / SDK alongside native memory | Available interfaces; host acceptance still required | Two stores coexist unless the application explicitly routes memory through RecallLedger |
+| Managed Markdown compatibility | Planned | RecallLedger owns dynamic records; Markdown is a versioned, rebuildable view |
+| Framework-native memory backend | Planned adapters | The framework routes long-term reads and writes through RecallLedger; it keeps its own checkpoints |
+
+Keep human-authored `AGENTS.md`, `CLAUDE.md`, and project rules. Learned facts
+should enter a data channel, with provenance and revision metadata, rather than
+automatically becoming instructions. Generated Markdown needs a manifest and a
+freshness check; it must not become a second independently writable authority.
+The [native memory design](docs/native-memory.md) explains migration, concurrent
+edits, session refresh, and the limits of revoking copies.
 
 ## Current scope
 
@@ -58,6 +114,10 @@ search scans eligible vectors rather than using an ANN index.
 Repository-state validation, learned memory selection, cost-optimal repair
 selection, and benchmark quality results remain future work. Generated summaries
 are not fact-checked, and model fluency is not evidence of source fidelity.
+
+The next priorities are host ownership and Markdown migration, applicability
+checks against the current task/environment, and equal-budget behavioral
+evaluation. See the [acceptance gates](docs/roadmap.md#delivery-gates).
 
 ## Build and try it
 

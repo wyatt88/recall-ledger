@@ -153,3 +153,8 @@ repair tasks for managed summaries, but does not implement that optimizer.
 Automatic generation and repair make the grouping hypothesis experimentally
 accessible. They do not resolve it. The synthetic partition observations above
 remain the original model-free mechanism example, not a new inference benchmark.
+
+The [technical roadmap](roadmap.md) adds a dated comparison with current
+official memory-system documentation, proposed host/applicability work, and
+strong-baseline evaluation gates. Those plans do not add benchmark results or
+extend the implemented guarantees described here.
