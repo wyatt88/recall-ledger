@@ -97,6 +97,51 @@ class ClientTests(unittest.TestCase):
         with self.assertRaises(TransportError):
             self.client.call("status")
 
+    def test_summary_returns_queue_receipt_with_original_write_key(self):
+        def handler(stream, request):
+            self.assertEqual(request["method"], "summarize")
+            self.assertEqual(request["params"]["inputs"], ["source-one", "source-two"])
+            self.assertEqual(request["params"]["max_chars"], 800)
+            self.assertEqual(request["params"]["idempotency_key"], "summary-request-1")
+            receipt = {"task_id": "task-1", "output_id": "output-1", "state": "pending"}
+            stream.sendall(json.dumps({"id": request["id"], "result": receipt}).encode() + b"\n")
+
+        self.serve(handler)
+        result = self.client.summarize(
+            ["source-one", "source-two"], max_chars=800, idempotency_key="summary-request-1"
+        )
+        self.assertEqual(result["state"], "pending")
+        self.assertEqual(result["output_id"], "output-1")
+
+    def test_maintenance_status_preserves_failed_task_metadata(self):
+        def handler(stream, request):
+            self.assertEqual(request["method"], "maintenance_status")
+            self.assertEqual(request["params"], {"limit": 20})
+            result = {"tasks": [{"task_id": "task-1", "state": "failed", "error_code": "model_timeout"}]}
+            stream.sendall(json.dumps({"id": request["id"], "result": result}).encode() + b"\n")
+
+        self.serve(handler)
+        result = self.client.maintenance_status(limit=20)
+        self.assertEqual(result["tasks"][0]["error_code"], "model_timeout")
+
+    def test_recall_mode_and_coverage_are_preserved(self):
+        def handler(stream, request):
+            self.assertEqual(request["params"]["mode"], "hybrid")
+            result = {"items": [], "coverage": {"degraded": True, "mode": "lexical"}}
+            stream.sendall(json.dumps({"id": request["id"], "result": result}).encode() + b"\n")
+
+        self.serve(handler)
+        result = self.client.recall("remembered topic", mode="hybrid")
+        self.assertTrue(result["coverage"]["degraded"])
+
+    def test_model_compatible_timeout_defaults_and_invalid_values(self):
+        self.assertEqual(Client(self.socket_path).timeout, 330.0)
+        for timeout in (0, -1, float("inf"), float("nan")):
+            with self.assertRaises(ValueError):
+                Client(self.socket_path, timeout=timeout)
+        with self.assertRaises(ValueError):
+            self.client.summarize("single-string", idempotency_key="invalid")
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -8,6 +8,11 @@ use std::path::Path;
 pub const MAX_FRAME_BYTES: usize = 1024 * 1024;
 pub const MAX_ID_BYTES: usize = 256;
 
+pub struct WorkerOptions {
+    pub interval_ms: u64,
+    pub params: Value,
+}
+
 pub fn failure(code: &str, message: impl Into<String>, retryable: bool) -> Error {
     Error {
         code: code.into(),
@@ -75,7 +80,7 @@ pub fn request(socket: &Path, method: &str, params: Value) -> Result<Value, Erro
 
     let mut stream = UnixStream::connect(socket)
         .map_err(|err| failure("transport_unavailable", err.to_string(), true))?;
-    let timeout = Some(Duration::from_secs(15));
+    let timeout = Some(Duration::from_secs(330));
     stream
         .set_read_timeout(timeout)
         .and_then(|()| stream.set_write_timeout(timeout))
@@ -131,7 +136,7 @@ pub fn request(_socket: &Path, _method: &str, _params: Value) -> Result<Value, E
 mod daemon {
     use super::*;
     use fs2::FileExt;
-    use recall_ledger::Store;
+    use recall_ledger::{models, runtime::Runtime, Store};
     use std::fs::{self, File, OpenOptions};
     use std::io::BufReader;
     use std::os::unix::fs::{
@@ -260,7 +265,7 @@ mod daemon {
         ))
     }
 
-    fn response(store: &mut Store, namespace: &str, frame: &[u8]) -> Value {
+    fn response(runtime: &mut Runtime, namespace: &str, frame: &[u8]) -> Value {
         let request: Value = match serde_json::from_slice(frame) {
             Ok(value) => value,
             Err(_) => {
@@ -294,19 +299,29 @@ mod daemon {
         if !params.is_object() || params.get("namespace").is_some() {
             return json!({"id": id, "error": failure("invalid_request", "params must be an object without namespace", false)});
         }
-        match store.execute(namespace, method, params) {
+        if method == "maintain" {
+            return json!({"id": id, "error": failure("unsupported_operation",
+                "Run maintenance through the trusted local CLI or configured daemon worker.", false)});
+        }
+        match runtime.execute(namespace, method, params) {
             Ok(result) => json!({"id": id, "result": result}),
             Err(error) => json!({"id": id, "error": error}),
         }
     }
 
-    fn connection(stream: UnixStream, db: &Path, namespace: &str) -> io::Result<()> {
-        let timeout = Some(Duration::from_secs(15));
+    fn connection(
+        stream: UnixStream,
+        db: &Path,
+        namespace: &str,
+        models: Option<models::Config>,
+    ) -> io::Result<()> {
+        let timeout = Some(Duration::from_secs(330));
         stream.set_read_timeout(timeout)?;
         stream.set_write_timeout(timeout)?;
         let mut writer = stream.try_clone()?;
         let mut reader = BufReader::new(stream);
-        let mut store = Store::open(db).map_err(io::Error::other)?;
+        let store = Store::open(db).map_err(io::Error::other)?;
+        let mut runtime = Runtime::new(store, models).map_err(io::Error::other)?;
         loop {
             let frame = match read_frame(&mut reader) {
                 Ok(Some(frame)) => frame,
@@ -324,7 +339,7 @@ mod daemon {
                     return Err(err);
                 }
             };
-            let result = response(&mut store, namespace, &frame);
+            let result = response(&mut runtime, namespace, &frame);
             if let Err(err) = write_frame(&mut writer, &result) {
                 if err.kind() != io::ErrorKind::InvalidData {
                     return Err(err);
@@ -337,7 +352,13 @@ mod daemon {
         }
     }
 
-    pub fn serve(db: &Path, namespace: &str, socket: &Path) -> Result<(), Error> {
+    pub fn serve(
+        db: &Path,
+        namespace: &str,
+        socket: &Path,
+        models: Option<models::Config>,
+        worker: Option<WorkerOptions>,
+    ) -> Result<(), Error> {
         if namespace.trim().is_empty() {
             return Err(failure(
                 "invalid_namespace",
@@ -379,11 +400,30 @@ mod daemon {
             )
         })?;
         // Fail startup, rather than accepting clients against an invalid database.
-        let mut store = Store::open(&db)?;
-        store.execute(namespace, "status", json!({}))?;
-        drop(store);
+        let mut runtime = Runtime::new(Store::open(&db)?, models.clone())?;
+        runtime.execute(namespace, "status", json!({}))?;
+        drop(runtime);
         let (listener, _socket_guard) =
             listener(socket).map_err(|err| failure("socket_error", err.to_string(), false))?;
+        if let (Some(worker), Some(worker_models)) = (worker, models.clone()) {
+            let worker_db = db.clone();
+            let worker_namespace = namespace.to_owned();
+            std::thread::Builder::new()
+                .name("recall-maintenance".into())
+                .spawn(move || loop {
+                    let result = Store::open(&worker_db)
+                        .and_then(|store| Runtime::new(store, Some(worker_models.clone())))
+                        .and_then(|mut runtime| {
+                            runtime.execute(&worker_namespace, "maintain", worker.params.clone())
+                        });
+                    if let Err(error) = result {
+                        // Provider diagnostics and memory text must not enter daemon logs.
+                        eprintln!("memory maintenance failed: {}", error.code);
+                    }
+                    std::thread::sleep(Duration::from_millis(worker.interval_ms));
+                })
+                .map_err(|_| failure("worker_error", "Cannot start maintenance worker.", false))?;
+        }
         eprintln!(
             "recall-ledger listening on {} (namespace {})",
             socket.display(),
@@ -400,12 +440,13 @@ mod daemon {
             let slot = ClientSlot(Arc::clone(&active));
             let db = db.clone();
             let namespace = namespace.to_owned();
+            let models = models.clone();
             if let Err(err) = std::thread::Builder::new()
                 .name("recall-client".into())
                 .spawn(move || {
                     let _slot = slot;
                     // A malformed/disconnected client must not terminate the daemon.
-                    let _ = connection(stream, &db, &namespace);
+                    let _ = connection(stream, &db, &namespace, models);
                 })
             {
                 eprintln!("cannot spawn client handler: {err}");
@@ -419,7 +460,13 @@ mod daemon {
 pub use daemon::serve;
 
 #[cfg(not(unix))]
-pub fn serve(_db: &Path, _namespace: &str, _socket: &Path) -> Result<(), Error> {
+pub fn serve(
+    _db: &Path,
+    _namespace: &str,
+    _socket: &Path,
+    _models: Option<recall_ledger::models::Config>,
+    _worker: Option<WorkerOptions>,
+) -> Result<(), Error> {
     Err(failure(
         "unsupported_platform",
         "IPC requires macOS or Linux",

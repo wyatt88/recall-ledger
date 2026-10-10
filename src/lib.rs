@@ -12,8 +12,13 @@ use std::path::Path;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use uuid::Uuid;
 
+mod maintenance;
+pub mod models;
+pub mod runtime;
+mod vector;
+
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
-const SCHEMA: i64 = 1;
+const SCHEMA: i64 = 2;
 const MAX_BODY: usize = 65_536;
 const MAX_INPUTS: usize = 64;
 const MAX_ANCESTORS: usize = 10_000;
@@ -127,21 +132,26 @@ impl Store {
         connection.busy_timeout(Duration::from_secs(5))?;
         connection.execute_batch("PRAGMA foreign_keys=ON; PRAGMA synchronous=FULL;")?;
         let version: i64 = connection.query_row("PRAGMA user_version", [], |r| r.get(0))?;
-        if version != 0 && version != SCHEMA {
+        if ![0, 1, SCHEMA].contains(&version) {
             return Err(Error::new(
                 "schema_mismatch",
                 "Unsupported database schema version.",
             ));
         }
         let tx = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
-        if version == 0 {
+        let locked_version: i64 = tx.query_row("PRAGMA user_version", [], |r| r.get(0))?;
+        if ![0, 1, SCHEMA].contains(&locked_version) {
+            return Err(Error::new(
+                "schema_mismatch",
+                "Unsupported database schema version.",
+            ));
+        }
+        if locked_version == 0 {
             let unrelated: i64 = tx.query_row(
                 "SELECT count(*) FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'",
                 [],
                 |r| r.get(0),
             )?;
-            // Another connection may have initialized while we waited for the write lock.
-            let locked_version: i64 = tx.query_row("PRAGMA user_version", [], |r| r.get(0))?;
             if locked_version == 0 && unrelated > 0 {
                 return Err(Error::new(
                     "schema_mismatch",
@@ -193,6 +203,11 @@ impl Store {
                 ));
             }
         }
+        if locked_version < 2 {
+            vector::schema(&tx)?;
+            maintenance::schema(&tx)?;
+            tx.pragma_update(None, "user_version", SCHEMA)?;
+        }
         tx.commit()?;
         connection.pragma_update(None, "journal_mode", "WAL")?;
         Ok(Self { connection })
@@ -219,12 +234,50 @@ impl Store {
             "inspect" => &["id", "history"],
             "revise" => &["id", "expected_revision", "body", "idempotency_key"],
             "retract" => &["id", "expected_revision", "idempotency_key"],
-            "recall" => &["query", "limit", "max_chars", "minimum_commit"],
+            "recall" => &[
+                "query",
+                "limit",
+                "max_chars",
+                "minimum_commit",
+                "mode",
+                "model_key",
+                "query_vector",
+            ],
             "prepare" => &["inputs", "processor", "idempotency_key"],
             "job" => &["job_id"],
             "publish" => &["job_id", "body", "kind", "idempotency_key"],
             "operation" => &["method", "idempotency_key"],
-            "plan" => &["strategy", "max_group_chars"],
+            "plan" => &["strategy", "max_group_chars", "unmanaged_only"],
+            "embedding_set" => &[
+                "id",
+                "expected_revision",
+                "model_key",
+                "vector",
+                "idempotency_key",
+            ],
+            "embedding_candidates" => &["model_key", "limit"],
+            "embedding_fail" => &[
+                "id",
+                "expected_revision",
+                "model_key",
+                "error_code",
+                "idempotency_key",
+            ],
+            "embedding_retry" => &["model_key", "idempotency_key"],
+            "embedding_status" => &["model_key"],
+            "summary_create" => &["inputs", "processor", "max_chars", "idempotency_key"],
+            "maintenance_claim" => &["worker", "lease_seconds", "idempotency_key"],
+            "maintenance_job" => &["task_id", "lease_token"],
+            "maintenance_complete" => &["task_id", "lease_token", "body", "idempotency_key"],
+            "maintenance_fail" => &[
+                "task_id",
+                "lease_token",
+                "error_code",
+                "retryable",
+                "idempotency_key",
+            ],
+            "maintenance_retry" => &["task_id", "idempotency_key"],
+            "maintenance_status" => &["limit"],
             _ => return Err(Error::new("method_not_found", "Unknown method.")),
         };
         if args.keys().any(|k| !allowed.contains(&k.as_str())) {
@@ -232,7 +285,19 @@ impl Store {
         }
         let mutation = matches!(
             method,
-            "remember" | "revise" | "retract" | "prepare" | "publish"
+            "remember"
+                | "revise"
+                | "retract"
+                | "prepare"
+                | "publish"
+                | "embedding_set"
+                | "embedding_fail"
+                | "embedding_retry"
+                | "summary_create"
+                | "maintenance_claim"
+                | "maintenance_complete"
+                | "maintenance_fail"
+                | "maintenance_retry"
         );
         let tx = self.connection.transaction_with_behavior(if mutation {
             TransactionBehavior::Immediate
@@ -261,6 +326,19 @@ impl Store {
                 parse_stored(&receipt)?
             } else {
                 let mut receipt = mutate(&tx, namespace, method, &arguments, at)?;
+                // Empty queue polls have no side effect, and must not grow the
+                // durable receipt table on every background worker tick.
+                if method == "maintenance_claim" && receipt["claimed"] == false {
+                    receipt["commit_token"] = json!(commit_token(&tx)?);
+                    receipt["durable"] = json!(false);
+                    tx.commit()?;
+                    return Ok(receipt);
+                }
+                if method == "maintenance_complete" {
+                    if let Some(id) = receipt["id"].as_str() {
+                        vector::invalidate(&tx, namespace, &[id.to_owned()])?;
+                    }
+                }
                 tx.execute(
                     "UPDATE meta SET value=CAST(value AS INTEGER)+1 WHERE key='sequence'",
                     [],
@@ -519,6 +597,8 @@ fn invalidate(db: &Connection, ns: &str, ids: &[String], erase: bool, at: i64) -
             params![ns, id],
         )?;
     }
+    vector::invalidate(db, ns, ids)?;
+    maintenance::on_invalidate(db, ns, ids, erase, at)?;
     Ok(())
 }
 fn job_meta(db: &Connection, ns: &str, id: &str) -> Result<(String, String, Option<String>)> {
@@ -606,6 +686,12 @@ fn mutate(db: &Connection, ns: &str, method: &str, v: &Value, at: i64) -> Result
                     "withdrawn_descendants":affected.len(),"physical_erasure":false}));
             }
             require_valid(db, ns, &r, at)?;
+            if maintenance::is_managed(db, ns, id)? {
+                return Err(Error::new(
+                    "managed_record",
+                    "Revise the sources of a managed summary, or retract it.",
+                ));
+            }
             let text = body(v)?;
             let revision = r
                 .revision
@@ -633,6 +719,8 @@ fn mutate(db: &Connection, ns: &str, method: &str, v: &Value, at: i64) -> Result
                 "INSERT INTO record_fts(id,namespace,body) VALUES(?1,?2,?3)",
                 params![id, ns, text],
             )?;
+            vector::invalidate(db, ns, &[id.to_owned()])?;
+            maintenance::on_invalidate(db, ns, &[id.to_owned()], false, at)?;
             Ok(
                 json!({"id":id,"revision":revision,"state":"active","invalidated_descendants":affected.len(),
                 "index_state":"lexical_ready"}),
@@ -723,6 +811,14 @@ fn mutate(db: &Connection, ns: &str, method: &str, v: &Value, at: i64) -> Result
                 json!({"id":r.id,"revision":1,"job_id":id,"state":"published","index_state":"lexical_ready"}),
             )
         }
+        "embedding_set" | "embedding_fail" | "embedding_retry" => {
+            vector::mutate(db, ns, method, v, at)
+        }
+        "summary_create"
+        | "maintenance_claim"
+        | "maintenance_complete"
+        | "maintenance_fail"
+        | "maintenance_retry" => maintenance::mutate(db, ns, method, v, at),
         _ => Err(Error::new("method_not_found", "Unknown mutation.")),
     }
 }
@@ -753,7 +849,8 @@ fn read(db: &Connection, ns: &str, method: &str, v: &Value, at: i64) -> Result<V
             )?;
             Ok(
                 json!({"version":VERSION,"schema_version":SCHEMA,"namespace":ns,"commit_token":commit_token(db)?,
-                "records":count,"capabilities":{"lexical_search":true,"embedding":false,"model_calls":false,
+                "records":count,"capabilities":{"lexical_search":true,"embedding":true,"vector_search":true,
+                "hybrid_rrf":true,"model_calls":false,"managed_summaries":true,"repair_queue":true,
                 "lineage":true,"conditional_publish":true,"restore":false,"physical_erasure":false}}),
             )
         }
@@ -842,6 +939,8 @@ fn read(db: &Connection, ns: &str, method: &str, v: &Value, at: i64) -> Result<V
             )
         }
         "plan" => plan(db, ns, v, at),
+        "embedding_candidates" | "embedding_status" => vector::read(db, ns, method, v, at),
+        "maintenance_job" | "maintenance_status" => maintenance::read(db, ns, method, v, at),
         _ => Err(Error::new("method_not_found", "Unknown read.")),
     }
 }
@@ -852,52 +951,108 @@ fn recall(db: &Connection, ns: &str, v: &Value, at: i64) -> Result<Value> {
     if query.len() > 4096 {
         return Err(Error::new("invalid_request", "query is too large."));
     }
+    let mode = optional_string(v, "mode", "lexical")?;
+    if !["lexical", "vector", "hybrid"].contains(&mode) {
+        return Err(Error::new(
+            "invalid_request",
+            "mode must be lexical, vector or hybrid.",
+        ));
+    }
+    if mode == "lexical" && (v.get("query_vector").is_some() || v.get("model_key").is_some()) {
+        return Err(Error::new(
+            "invalid_request",
+            "Vector arguments require vector or hybrid mode.",
+        ));
+    }
     let limit = integer(v, "limit", 10, 1, 100)? as usize;
     let budget = integer(v, "max_chars", 4000, 0, 1_000_000)? as usize;
-    let terms: Vec<String> = query
-        .split(|c: char| !c.is_alphanumeric())
-        .filter(|t| !t.is_empty())
-        .take(32)
-        .map(|t| t.to_lowercase())
-        .collect();
-    let mut ranks: BTreeMap<String, f64> = BTreeMap::new();
-    if !terms.is_empty() {
-        let expr = terms
-            .iter()
-            .map(|t| format!("\"{}\"", t.replace('"', "\"\"")))
-            .collect::<Vec<_>>()
-            .join(" OR ");
-        let mut stmt = db.prepare(
-            "SELECT id FROM record_fts WHERE record_fts MATCH ?1 AND namespace=?2 ORDER BY bm25(record_fts),id LIMIT 1000",
-        )?;
-        let ids = stmt.query_map(params![expr, ns], |r| r.get::<_, String>(0))?;
-        for (rank, id) in ids.enumerate() {
-            ranks.insert(id?, 1.0 / (60.0 + rank as f64 + 1.0));
-        }
-    }
     let records = readable(db, ns, at)?;
-    let mut candidates: Vec<(f64, Record)> = Vec::new();
-    for r in records {
-        let lower = r.body.to_lowercase();
-        let matched = terms.iter().filter(|t| lower.contains(t.as_str())).count();
-        if terms.is_empty() {
-            if query.trim().is_empty() || lower.contains(&query.to_lowercase()) {
-                candidates.push((0.0, r));
+    let eligible = records.len();
+    let mut lexical = BTreeMap::<String, f64>::new();
+    if mode != "vector" {
+        let terms: Vec<String> = query
+            .split(|c: char| !c.is_alphanumeric())
+            .filter(|t| !t.is_empty())
+            .take(32)
+            .map(|t| t.to_lowercase())
+            .collect();
+        if !terms.is_empty() {
+            let expr = terms
+                .iter()
+                .map(|t| format!("\"{}\"", t.replace('"', "\"\"")))
+                .collect::<Vec<_>>()
+                .join(" OR ");
+            let mut stmt = db.prepare("SELECT id FROM record_fts WHERE record_fts MATCH ?1 AND namespace=?2 ORDER BY bm25(record_fts),id LIMIT 1000")?;
+            let ids = stmt.query_map(params![expr, ns], |r| r.get::<_, String>(0))?;
+            for (rank, id) in ids.enumerate() {
+                lexical.insert(id?, 1.0 / (60.0 + rank as f64 + 1.0));
             }
-        } else if matched > 0 || ranks.contains_key(&r.id) {
-            // Literal substring channel keeps CJK useful without loading an embedding model.
-            let score = ranks.get(&r.id).copied().unwrap_or(0.0)
-                + matched as f64 / (60.0 + terms.len() as f64);
-            candidates.push((score, r));
+        }
+        for r in &records {
+            let lower = r.body.to_lowercase();
+            let matched = terms.iter().filter(|t| lower.contains(t.as_str())).count();
+            if terms.is_empty() {
+                if query.trim().is_empty() || lower.contains(&query.to_lowercase()) {
+                    lexical.insert(r.id.clone(), 0.0);
+                }
+            } else if matched > 0 || lexical.contains_key(&r.id) {
+                *lexical.entry(r.id.clone()).or_default() +=
+                    matched as f64 / (60.0 + terms.len() as f64);
+            }
         }
     }
+    let key = if mode == "lexical" {
+        None
+    } else {
+        Some(string(v, "model_key")?)
+    };
+    let semantic = if let Some(key) = key {
+        vector::scores(
+            db,
+            ns,
+            key,
+            v.get("query_vector").unwrap_or(&Value::Null),
+            &records,
+        )?
+    } else {
+        BTreeMap::new()
+    };
+    let indexed = semantic.len();
+    let mut scores = if mode == "vector" {
+        semantic.clone()
+    } else {
+        lexical.clone()
+    };
+    if mode == "hybrid" {
+        scores.clear();
+        // Standard reciprocal rank fusion over eligible lexical and cosine lists.
+        // Limit each channel to 1000 candidates, without treating missing vectors as zero scores.
+        for channel in [&lexical, &semantic] {
+            let mut ranked: Vec<_> = records
+                .iter()
+                .filter_map(|r| channel.get(&r.id).map(|score| (*score, r)))
+                .collect();
+            ranked.sort_by(|(a, ar), (b, br)| {
+                b.total_cmp(a)
+                    .then_with(|| br.updated_at.cmp(&ar.updated_at))
+                    .then_with(|| ar.id.cmp(&br.id))
+            });
+            for (rank, (_, record)) in ranked.into_iter().take(1000).enumerate() {
+                *scores.entry(record.id.clone()).or_default() += 1.0 / (60.0 + rank as f64 + 1.0);
+            }
+        }
+    }
+    let mut candidates: Vec<_> = records
+        .into_iter()
+        .filter_map(|r| scores.get(&r.id).map(|score| (*score, r)))
+        .collect();
     candidates.sort_by(|(a, ar), (b, br)| {
         b.total_cmp(a)
             .then_with(|| br.updated_at.cmp(&ar.updated_at))
             .then_with(|| ar.id.cmp(&br.id))
     });
     let mut items = Vec::new();
-    let mut used = 0usize;
+    let mut used = 0;
     let mut deferred = 0;
     for (score, r) in candidates {
         let chars = r.body.chars().count();
@@ -908,13 +1063,22 @@ fn recall(db: &Connection, ns: &str, v: &Value, at: i64) -> Result<Value> {
         used += chars;
         let mut item = json!(r);
         item["selection_score"] = json!(score);
+        if let Some(cosine) = semantic.get(&r.id) {
+            item["cosine_similarity"] = json!(cosine);
+        }
         item["trust_boundary"] = json!("retrieved_data");
         items.push(item);
     }
     Ok(json!({"items":items,"commit_token":commit_token(db)?,
         "budget":{"max_chars":budget,"used_chars":used,"unit":"unicode_scalars","bodies_only":true},
         "coverage":{"status":if deferred>0 {"budget_limited"} else {"complete_scan"},
-        "deferred":deferred,"semantic_search":false,"scope":"active_current_records"}}))
+        "deferred":deferred,"semantic_search":mode!="lexical","mode":mode,"model_key":key,
+        "eligible_records":eligible,"indexed_records":indexed,
+        "semantic_index_complete":mode!="lexical" && indexed==eligible,
+        "unindexed_records":if mode!="lexical" {eligible-indexed} else {0},
+        "vector_algorithm":if mode!="lexical" {Some("exact_cosine")} else {None},
+        "fusion":if mode=="hybrid" {Some("rrf_k60_top1000_per_channel")} else {None},
+        "scope":"active_current_records"}}))
 }
 
 fn plan(db: &Connection, ns: &str, v: &Value, at: i64) -> Result<Value> {
@@ -923,8 +1087,23 @@ fn plan(db: &Connection, ns: &str, v: &Value, at: i64) -> Result<Value> {
         return Err(Error::new("invalid_request", "Unknown grouping strategy."));
     }
     let max_chars = integer(v, "max_group_chars", 4000, 1, 1_000_000)? as usize;
+    let unmanaged = v
+        .get("unmanaged_only")
+        .map(|x| {
+            x.as_bool()
+                .ok_or_else(|| Error::new("invalid_request", "unmanaged_only must be boolean."))
+        })
+        .transpose()?
+        .unwrap_or(false);
     let mut buckets: BTreeMap<String, Vec<Record>> = BTreeMap::new();
     for r in readable(db, ns, at)? {
+        if unmanaged
+            && (r.kind == "summary"
+                || !dependencies(db, &r.id)?.is_empty()
+                || maintenance::assigned(db, ns, &r.id)?)
+        {
+            continue;
+        }
         // Scope is fixed by the caller. Source/kind are conservative hard grouping boundaries.
         let suffix = match strategy {
             "individual" => r.id.clone(),

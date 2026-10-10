@@ -7,11 +7,11 @@ project. Recent arXiv papers may be preprints.
 
 ## Six technical references
 
-| Fixed paper version | Relevant idea | RecallLedger 0.1 status |
+| Fixed paper version | Relevant idea | RecallLedger 0.2 status |
 | --- | --- | --- |
 | [MemGPT: Towards LLMs as Operating Systems, v2](https://arxiv.org/abs/2310.08560v2), first submitted 2023-10-12 | Separate finite working context from persistent storage; retrieve through explicit operations | Local persistent records and bounded recall. Automated tier management and paging policy are not reproduced. |
-| [Hindsight is 20/20: Building Agent Memory that Retains, Recalls, and Reflects, v1](https://arxiv.org/abs/2512.12818v1), 2025-12-14 | Typed memory and multiple retrieval routes | Explicit record kinds and temporal validity. Embeddings, graph expansion, reflection, and rank fusion are future work. |
-| [MEMOREPAIR: Barrier-First Cascade Repair in Agentic Memory, v1](https://arxiv.org/abs/2605.07242v1), 2026-05-08 | Withdraw affected derivations before publishing repaired successors | Input revisions, transitive withdrawal, and conditional publication are engineering adaptations. Repair optimization and the paper's experiments are not implemented. |
+| [Hindsight is 20/20: Building Agent Memory that Retains, Recalls, and Reflects, v1](https://arxiv.org/abs/2512.12818v1), 2025-12-14 | Typed memory and multiple retrieval routes | Explicit kinds, temporal validity, local embeddings, and lexical/cosine RRF. Graph expansion and reflection are future work. This does not reproduce the paper's retrieval system. |
+| [MEMOREPAIR: Barrier-First Cascade Repair in Agentic Memory, v1](https://arxiv.org/abs/2605.07242v1), 2026-05-08 | Withdraw affected derivations before publishing repaired successors | Input revisions, transitive withdrawal, durable managed-summary repair, and conditional publication are engineering adaptations. Repair optimization and the paper's experiments are not implemented. |
 | [MemTrace: State-Consistent Memory for Long-Horizon Coding Agents, v2](https://arxiv.org/abs/2610.04838v2), first submitted 2026-10-04; v2 2026-10-08 | Check whether execution evidence still applies to the current code state | Record revision validation is present. Repository state capture and coding-specific applicability checks are future work. |
 | [LongMemEval: Benchmarking Chat Assistants on Long-Term Interactive Memory, v2](https://arxiv.org/abs/2410.10813v2), first submitted 2024-10-14 | Separate extraction, cross-session reasoning, updating, temporal reasoning, and abstention | Guides a future behavioral evaluation. The project has not run this benchmark or bundled its dataset. |
 | [MemCalib: Benchmarking and Optimizing Memory Use in LLM Agents, v3](https://arxiv.org/abs/2609.24259v3), first submitted 2026-09-21; v3 2026-10-08 | Distinguish memory underuse from inappropriate overuse | Guides future use-quality metrics. The project has not implemented its training method or reproduced its results. |
@@ -70,8 +70,9 @@ The existence of this hypothesis does not establish that the proposed approach
 is new. External text summaries introduce their own quality, dependency, and
 maintenance trade-offs.
 
-The current `plan` operation supplies deterministic grouping candidates only.
-It does not summarize, measure task quality, or optimize this objective.
+The `plan` operation supplies deterministic grouping candidates. The optional
+runtime can summarize selected groups and repair their managed outputs, but this
+does not measure task quality or optimize the objective above.
 
 ## Executable mechanism example
 
@@ -138,15 +139,17 @@ against a strong simple baseline, or its gains depend on future test information
 
 ## Future algorithm candidates
 
-Hindsight's use of multiple retrieval routes suggests standard reciprocal-rank
-fusion as an optional later component. RRF combines rankings; it does not verify
-facts or authorize reads.
+Hindsight's use of multiple retrieval routes motivated the standard
+reciprocal-rank fusion component now present in v0.2. It combines lexical and
+exact-cosine lists with `k=60`; it does not verify facts or authorize reads.
+Implementation of that component is not evidence of task-quality improvement.
 
 MemoRepair supplies a cost/value repair-selection formulation with prerequisite
 closure. For a fixed graph and scalar trade-off, maximum-weight closure can be
 reduced to minimum cut. This is not a general guarantee of an optimum under every
-hard budget or changing dependency model. RecallLedger 0.1 implements neither
-that optimizer nor automatic repair scheduling.
+hard budget or changing dependency model. RecallLedger 0.2 has durable leased
+repair tasks for managed summaries, but does not implement that optimizer.
 
-Both are concrete implementation directions after the basic state contract has
-been tested. Neither is a present product feature.
+Automatic generation and repair make the grouping hypothesis experimentally
+accessible. They do not resolve it. The synthetic partition observations above
+remain the original model-free mechanism example, not a new inference benchmark.

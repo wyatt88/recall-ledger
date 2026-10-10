@@ -1,6 +1,7 @@
 # Architecture
 
-RecallLedger 0.1 is a local, revision-aware record store. Its core responsibility
+RecallLedger 0.2 is a local, revision-aware record store with optional local model
+execution and durable maintenance. Its core responsibility
 is deciding whether a result derived from known inputs may be published and
 read. It does not decide whether the result is factually true.
 
@@ -13,7 +14,10 @@ Agent host
                              │
 Trusted CLI / Rust caller ────┴─ direct Store access
 
-External processor: reads prepared inputs and submits a proposed derived body
+Daemon worker → current records → local embedding endpoint → revision-bound vectors
+              → durable recipes → local chat endpoint → guarded summary publication
+
+External processors can still use the manual prepare/job/publish protocol.
 ```
 
 The MCP adapter connects to the running daemon. It is not a second memory store.
@@ -25,9 +29,11 @@ with no sampling or task capabilities. Clients must complete initialization and
 send `notifications/initialized` before listing or calling tools. `--db` and
 `--namespace` do not change the daemon selection in MCP mode.
 
-There is no remote transport, model dependency, GPU requirement, or HTTP service.
-The library uses portable Rust/SQLite components; the 0.1 daemon transport targets
-macOS and Linux. Windows daemon behavior is not provided.
+The Agent transport has no HTTP listener. Optional model calls go only to
+explicitly configured loopback HTTP endpoints, with proxies and redirects
+disabled. Models and their CPU/GPU resources are supplied separately.
+The deterministic Store works without a model. The daemon targets macOS and
+Linux; Windows daemon behavior is not provided.
 
 ## Records and revisions
 
@@ -83,13 +89,55 @@ must be trusted to use only the supplied inputs, or report every additional
 source through a future extension. Hidden reads invalidate claims of complete
 provenance.
 
-The first implementation does not retain an affected free-text summary merely
-because some other source could support a similar conclusion. It withdraws the
-summary and allows an explicit fresh job to create a replacement.
+The implementation does not retain an affected free-text summary merely because
+some other source could support a similar conclusion. It withdraws the summary.
+Manual derivations require a new explicit job; managed summaries use the repair
+queue described below.
+
+## Managed summaries and repair
+
+The configured runtime adds a `summarize` operation. It records a recipe with
+input record IDs, a pinned processor configuration, an output character budget,
+and a reserved stable `output_id`. The enqueue receipt is durable; generation
+does not happen in its SQLite transaction.
+
+A worker claims a task under a bounded lease, captures current source revisions
+and the current output revision, reads those captured inputs, and calls the local
+summary model outside all database transactions. Publication checks the lease,
+captured input revisions, ancestor validity, and output revision again. A late
+result cannot replace a newer or withdrawn result.
+
+Source revision withdraws the affected result and invalidates outstanding
+leases before scheduling a fresh task generation. A successful repair updates
+the same output record with a higher revision and fresh dependency edges.
+Dependent managed recipes are also queued. Recipes whose inputs are currently
+stale must wait for their upstream results to become valid.
+
+Retraction is terminal: affected recipes become cancelled, including recipes
+that have not published yet. An already running HTTP request may finish, but its
+old lease cannot publish. No mechanism retracts input text already delivered to
+the model server.
+Automatic discovery also excludes inputs assigned to cancelled recipes, avoiding
+silent recreation of a withdrawn summary. A deliberate new `summarize` request
+can create a different output from source records that remain active.
+
+Tasks and retries persist in SQLite. Expired leases can be reclaimed after a
+worker dies. Recorded model failures have bounded attempts and backoff; failed
+tasks remain visible until an explicit retry or relevant source change.
+Neither an error nor a delayed repair makes obsolete text readable again.
+
+The default automatic grouping policy considers eligible unmanaged root records,
+preserves source/kind boundaries, and creates recipes only for bounded groups of
+at least four records. It uses deterministic grouping, not learned importance.
+Explicit `summarize` may use fewer records. `--no-worker` disables all background
+maintenance; `--auto-summary-min 0` disables only automatic grouping.
+
+Only managed recipes are regenerated. The system cannot infer how to rerun an
+arbitrary external processor that used the manual `publish` operation.
 
 ## Transactions, retries, and commit tokens
 
-Every mutation requires an idempotency key. The operation, argument fingerprint,
+Every Store mutation requires an idempotency key. The operation, argument fingerprint,
 and result receipt are committed together. The receipt stores identifiers and
 status, not the original body.
 
@@ -109,30 +157,55 @@ Commit tokens identify storage and commit sequence. `minimum_commit` allows a
 read to require a known committed position. Tokens are not wall-clock time or a
 distributed consensus protocol.
 
-The 0.1 protocol does not support file-level cloning or rollback restoration as
+The protocol does not support file-level cloning or rollback restoration as
 a new storage history. Do not infer restore safety from commit tokens. `export`
 is a diagnostic view of currently readable state, not a restorable backup.
 
-## Retrieval
+## Retrieval and model identity
 
-The first retrieval path stays deterministic and local:
+The Store supports three retrieval modes:
 
-1. Bind the namespace from trusted configuration.
-2. Find candidates using literal-token text search, with a CJK fallback.
-3. Enforce current revision, validity, and dependency visibility.
-4. Return records within count and character limits, with budget and coverage
-   information.
+- `lexical`: literal-token text search with a CJK fallback.
+- `vector`: exact cosine scores for vectors matching the selected model key and
+  current record revision.
+- `hybrid`: independently rank eligible lexical and cosine candidates, then sum
+  `1 / (60 + rank)` over the two ranked lists. Each list contributes at most 1000
+  candidates. A missing vector does not act as a zero-score vector.
+
+Eligibility is enforced for both channels before selection. Namespace, current
+revision, validity, and dependency checks cannot be bypassed by a high score.
+Returned records also obey count and whole-body character limits.
+
+The Store receives caller-supplied query vectors and performs no network I/O.
+The configured runtime obtains query vectors from the local model. With an
+embedding provider, nonempty queries default to hybrid; without one, recall
+defaults to lexical. Hybrid query-model failure permits an explicitly marked
+lexical degradation; vector-only failure returns the error.
+
+An embedding is identified by namespace, record ID, source revision, and a stable
+model key. The key hashes the complete embedding configuration: endpoint, model,
+operator-declared weight revision, dimensions, task field, and timeout. A changed
+configuration uses a separate vector space. Matching dimensions alone are not a
+space identity check. The endpoint's returned model and dimensions are validated,
+but the protocol cannot attest the actual weights behind a reused server alias.
+
+Revision or retraction removes affected active embeddings. Workers publish a
+vector only if its captured source revision is still valid. Indexing is
+asynchronous; recall reports eligible/indexed counts and incomplete coverage.
+An empty semantic result does not prove the database contains no relevant facts.
+
+Vectors live in the same SQLite database as records. This version uses an exact
+scan, not an ANN index, quantized search engine, or measured large-scale service.
 
 `max_chars` is a character budget. It is not a model-token estimate. Unicode text
 and individual model tokenizers have different token counts.
 
-This version has no semantic embeddings, RRF, reranker, graph similarity search,
-or learned relevance score. Eligibility and ranking are separate concerns:
-a high retrieval score must never override retraction or stale dependencies.
+This version has no reranker, graph similarity retrieval, or learned relevance
+policy. Ranking and lineage management do not establish factual truth.
 
 ## Experimental consolidation groups
 
-`plan` proposes groups; it does not call a model or create a summary. The
+`plan` itself proposes groups without calling a model or creating a summary. The
 strategies `individual`, `fixed`, `topic`, and `volatility` support later
 comparisons while preserving namespace, source, and kind boundaries and bounded
 group text.
@@ -179,11 +252,11 @@ strong native-store baseline, equal processing budgets, and independent tasks.
 
 ## Future work
 
-Features that are not supplied by 0.1 include:
+Features that are not supplied by 0.2 include:
 
-- Explicit migration, backup, and restore protocols.
-- Durable automatic repair queues and cost-aware repair selection.
-- Optional vector retrieval and ranking fusion.
+- General backup, restore, and clone protocols. Schema 1 to 2 migration is present.
+- Cost-optimal repair selection and automatic reruns of arbitrary manual processors.
+- ANN indexing, rerankers, and graph similarity retrieval.
 - Captured repository and tool-state preconditions for coding agents.
 - Alternative support sets for structured claims.
 - Learned write/read policies and long-horizon task evaluations.

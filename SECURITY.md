@@ -2,7 +2,7 @@
 
 ## Supported scope
 
-RecallLedger 0.1 is an early local-storage implementation. Security fixes target
+RecallLedger 0.2 is an early local memory implementation. Security fixes target
 the latest source on the main branch. There is no long-term support commitment
 for historical snapshots.
 
@@ -26,8 +26,14 @@ permissions.
   copies already delivered to clients.
 - Database encryption, remote authentication, multi-user hosting, and hostile
   plugin isolation are not provided.
-- The core does not call a model or send memory to a network service. A host or
-  externally supplied processor may do so under its own configuration.
+- The deterministic `Store` does not make network requests. A configured
+  `Runtime` and its worker send queries and source bodies to explicitly selected
+  loopback HTTP model providers. Redirects, proxies, and implicit cloud fallback
+  are disabled. An unconfigured runtime makes no model calls.
+- Model processes and their logs are outside the storage retraction boundary.
+  Withdrawing a record cannot undo a request already received by a provider.
+  Local model configuration and weight revisions are trusted operator inputs;
+  the HTTP protocol does not attest the loaded weights or summary correctness.
 
 Do not use diagnostic exports as a secure backup or restore mechanism. Protect
 exports and logs according to the sensitivity of their content.

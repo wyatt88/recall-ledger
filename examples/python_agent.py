@@ -1,8 +1,12 @@
 #!/usr/bin/env python3
-"""Agent hook sketch; no model, framework, embeddings or automatic extraction.
+"""Agent hooks using the daemon's configured retrieval mode.
 
 Start the daemon first, then run:
 PYTHONPATH=sdk/python python3 examples/python_agent.py --socket /tmp/recall.sock
+
+Without model configuration recall is lexical. A daemon configured with a local
+embedding provider uses hybrid retrieval and reports semantic index coverage.
+The host still decides which observations should be stored.
 """
 
 import argparse

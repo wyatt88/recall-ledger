@@ -1,0 +1,18 @@
+{
+  "embedding": {
+    "url": "http://127.0.0.1:8080/v1/embeddings",
+    "model": "local-embedding-model",
+    "revision": "replace-with-the-served-model-revision",
+    "dimensions": 768,
+    "task_field": null,
+    "timeout_seconds": 60
+  },
+  "summary": {
+    "url": "http://127.0.0.1:8081/v1/chat/completions",
+    "model": "local-summary-model",
+    "revision": "replace-with-the-served-model-revision",
+    "timeout_seconds": 60,
+    "max_tokens": 512,
+    "extra_body": null
+  }
+}

@@ -5,9 +5,11 @@ Local memory infrastructure for agents, written in Rust.
 RecallLedger stores versioned records and tracks the inputs used to derive new
 records. When a source changes, its dependent results stop being readable. A
 worker that finishes late must validate its inputs before it can publish.
+Optional local models provide vector retrieval, automatic summaries, and repair
+of managed summaries after their sources change.
 
 [中文说明](README.zh-CN.md) · [Architecture](docs/architecture.md) ·
-[API contract](docs/IMPLEMENTATION-CONTRACT.md) · [Research](docs/research.md) ·
+[API contract](docs/CONTRACT.md) · [Operations](docs/OPERATIONS.md) · [Research](docs/research.md) ·
 [Contributing](CONTRIBUTING.md)
 
 ## Why this exists
@@ -31,7 +33,7 @@ An external process does not inherently improve an agent's reasoning.
 
 ## Current scope
 
-The 0.1 implementation is an early, single-machine foundation:
+The 0.2 source preview targets one machine:
 
 | Available surface | Behavior |
 | --- | --- |
@@ -39,16 +41,23 @@ The 0.1 implementation is an early, single-machine foundation:
 | Derivation protocol | `prepare` captures inputs; `publish` validates all recorded dependencies |
 | Revision and retraction | Transitive withdrawal of dependent records; guarded history and job reads |
 | Retry handling | Durable idempotency receipts and receipt lookup |
-| Recall | Local literal-token text search, CJK fallback, explicit character budget |
+| Recall | Literal text search, exact cosine vectors, hybrid RRF (`k=60`), character budgets |
+| Local models | Explicit loopback embedding/chat endpoints; pinned model configurations |
+| Automatic summaries | Durable recipes, bounded source groups, captured input revisions |
+| Automatic repair | Withdraw stale outputs; leased workers rebuild managed summaries with stable IDs |
 | Local daemon | Unix-domain socket on macOS/Linux; no HTTP listener |
-| MCP adapter | Stdio tools for remember, recall, inspect, revise, and retract |
+| MCP adapter | Record operations, summary enqueue, and maintenance status over stdio |
 | Python SDK | Client for the local daemon |
 | Experimental grouping | Deterministic grouping rules for later consolidation experiments |
 
-No model, API key, embedding download, or cloud account is required. The core
-does not generate summaries: a trusted external processor supplies the proposed
-body. Vector retrieval, RRF, automatic repair scheduling, repository-state
-validation, learned memory selection, and benchmark results are future work.
+The record store and lexical retrieval work without models. Semantic retrieval
+and generated summaries require local model servers that you run and configure;
+RecallLedger does not download weights or select a cloud provider. Exact cosine
+search scans eligible vectors rather than using an ANN index.
+
+Repository-state validation, learned memory selection, cost-optimal repair
+selection, and benchmark quality results remain future work. Generated summaries
+are not fact-checked, and model fluency is not evidence of source fidelity.
 
 ## Build and try it
 
@@ -65,14 +74,15 @@ cargo build --release --locked
 bash examples/workflow.sh
 ```
 
-Install the tagged source release:
+Install the current source preview:
 
 ```sh
-cargo install --git https://github.com/wyatt88/recall-ledger.git --tag v0.1.0 --locked
+cargo install --git https://github.com/wyatt88/recall-ledger.git --tag v0.2.0 --locked
 ```
 
 The package has not been published to crates.io or PyPI. The Python SDK ships in
-this repository. Release 0.1.0 distributes source; build for your local platform.
+this repository. Releases distribute source; build for your local platform.
+For reproducible installation, select a published tag or commit.
 
 The demo uses a fresh temporary directory and synthetic records. It checks that
 a summary prepared before a source revision cannot be published afterward, then
@@ -94,19 +104,41 @@ chmod 700 .local-state
   call recall --params '{"query":"Rust","max_chars":1200}'
 ```
 
-Each mutating request needs a nonempty `idempotency_key`. Reuse that key with
+Record and queue mutations need a nonempty `idempotency_key`. Reuse that key with
 identical arguments when retrying an uncertain result. Reusing it with different
 arguments returns a conflict. Use `operation` to retrieve the original receipt.
+Maintenance passes manage their individual transaction keys internally.
 
 ## Run beside an agent
 
-Start one daemon for a database in a private local directory:
+Edit [models.local.json](examples/models.local.json) to match your own local
+servers: complete endpoint URLs, returned model names, explicit weight revisions,
+and embedding dimensions. The example contains placeholders. No API key is used.
+Then start one daemon for a database in a private local directory:
 
 ```sh
 ./target/release/recall-ledger \
   --db .local-state/memory.sqlite3 --namespace demo \
+  --models examples/models.local.json \
   serve --socket .local-state/memory.sock
 ```
+
+With an embedding provider, nonempty queries use hybrid retrieval by default;
+without one, recall defaults to lexical search. `mode="vector"` requires semantic
+retrieval to succeed. If a hybrid query's model call fails, the result explicitly
+reports lexical degradation. Inspect `coverage` for missing vectors and fallback.
+
+The worker indexes current records, groups eligible unmanaged roots sharing
+source/kind boundaries, and generates summaries once a bounded group contains
+at least four records. Source revision withdraws a managed summary immediately,
+then queues repair. The repaired record keeps its `output_id` and increments its
+revision. Retraction cancels affected recipes. Manual `prepare`/`publish` outputs
+are invalidated but are not automatically regenerated.
+
+Omit `--models` for lexical-only operation. Use `--no-worker` to disable background
+maintenance, or `--auto-summary-min 0` to disable automatic grouping while retaining
+explicit summary jobs and indexing. See [operations](docs/OPERATIONS.md) for
+budgets, retries, provider compatibility, and manual maintenance.
 
 The namespace is selected by trusted transport configuration. Requests cannot
 switch it by adding a namespace field to their parameters.
@@ -124,8 +156,8 @@ For an MCP-capable host, configure this stdio command using absolute paths:
 }
 ```
 
-Start the daemon before the MCP adapter. The adapter exposes five record tools;
-the full derivation protocol is available through the daemon, CLI, and Rust
+Start the daemon before the MCP adapter. The full derivation protocol is available
+through the daemon, CLI, and Rust
 library. Host-specific MCP configuration and approval behavior remain the host's
 responsibility. The adapter targets MCP `2025-11-25` and provides tools only,
 without sampling or task capabilities.
@@ -147,9 +179,19 @@ receipt = memory.remember(
     idempotency_key="decision-2",
 )
 result = memory.recall("Rust", max_chars=1200)
+# Requires a configured summary provider; returns an enqueue receipt.
+queued = memory.summarize(
+    [receipt["id"]],
+    max_chars=800,
+    idempotency_key="summary-2",
+)
+tasks = memory.maintenance_status()
 ```
 
-The SDK does not retry automatically. If `TransportError.outcome_unknown` is
+`summarize` returns a task and reserved output ID, not completed prose. Once the
+task succeeds, use `inspect(queued["output_id"])`. The SDK's default timeout is
+330 seconds for bounded local inference; it does not retry automatically.
+If `TransportError.outcome_unknown` is
 `true`, recover with `operation` and the original method/key, or retry identical
 arguments with that key.
 
@@ -163,6 +205,8 @@ into its own profile or context, RecallLedger cannot retract that copy.
   validity conditions have been checked in that transaction.
 - Revising or retracting a source withdraws its transitive dependent results.
   Ordinary recall returns only currently readable records.
+- Managed repair checks its lease, captured source versions, and output version
+  before publication. A failed repair leaves the obsolete result unavailable.
 - Retraction blocks subsequent managed reads and clears managed body content.
   It is **not secure erasure of SQLite pages, WAL files, backups, or copies already
   returned to another process**.
@@ -172,7 +216,11 @@ into its own profile or context, RecallLedger cannot retract that copy.
 - Namespaces are an application boundary, not a sandbox against hostile code
   running as the same operating-system user. CLI and library access are trusted.
 - `export` is a diagnostic snapshot, not a backup or restore format. Restoring or
-  cloning database files is outside the 0.1 commit-token contract.
+  cloning database files is outside the commit-token contract. Opening a v0.1
+  database migrates it to schema 2; older binaries cannot open that schema.
+- The configured model `revision` is an operator declaration. The provider
+  protocol does not prove which weights a server actually loaded. Change the
+  revision whenever weights or encoding behavior change.
 - Validity timestamps must be supplied correctly. The store cannot discover an
   unreported real-world change.
 
@@ -185,11 +233,16 @@ for the boundaries in detail.
 cargo fmt --all -- --check
 cargo clippy --locked --all-targets -- -D warnings
 cargo test --locked --all-targets
+PYTHONPATH=sdk/python python3 -m unittest discover -s sdk/python/tests
 ```
 
 CI runs the Rust checks on Ubuntu and macOS. A green test run establishes only
 the cases covered by that run. It does not establish production readiness,
 superior agent task performance, or successful paper reproduction.
+
+[v0.2 validation](docs/VALIDATION-v0.2.md) separates deterministic tests,
+HTTP stubs, and the real local model smoke. The [review](docs/REVIEW-v0.2.md)
+records independently designed counterexamples and remaining limitations.
 
 ## Research basis
 

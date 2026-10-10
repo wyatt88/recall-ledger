@@ -6,9 +6,10 @@ the original method and idempotency key, or retry identical arguments and key.
 """
 
 import json
+import math
 import socket
 import uuid
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Sequence
 
 MAX_FRAME_BYTES = 1024 * 1024
 
@@ -38,9 +39,9 @@ class Client:
     Host application hooks must decide what to record and when to retrieve it.
     """
 
-    def __init__(self, socket_path: str, timeout: float = 15.0):
-        if timeout <= 0:
-            raise ValueError("timeout must be positive")
+    def __init__(self, socket_path: str, timeout: float = 330.0):
+        if not math.isfinite(timeout) or timeout <= 0:
+            raise ValueError("timeout must be positive and finite")
         self.socket_path = str(socket_path)
         self.timeout = timeout
 
@@ -135,3 +136,30 @@ class Client:
     def operation(self, method: str, idempotency_key: str) -> Any:
         """Recover an original receipt; not_found does not mean a retry is unsafe."""
         return self.call("operation", {"method": method, "idempotency_key": idempotency_key})
+
+    def summarize(
+        self,
+        inputs: Sequence[str],
+        *,
+        idempotency_key: str,
+        max_chars: int = 2000,
+    ) -> Any:
+        """Enqueue a managed summary; the receipt is not the generated result.
+
+        The daemon must have a summary provider configured. Its worker generates
+        the summary and repairs it when a recorded source revision changes.
+        """
+        if isinstance(inputs, (str, bytes)):
+            raise ValueError("inputs must be a sequence of record IDs")
+        return self.call(
+            "summarize",
+            {
+                "inputs": list(inputs),
+                "max_chars": max_chars,
+                "idempotency_key": idempotency_key,
+            },
+        )
+
+    def maintenance_status(self, *, limit: int = 100) -> Any:
+        """Read bounded task metadata and aggregate state counts."""
+        return self.call("maintenance_status", {"limit": limit})
