@@ -12,13 +12,17 @@ use std::path::Path;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use uuid::Uuid;
 
+mod changes;
+mod ingestion;
 mod maintenance;
 pub mod models;
+pub mod projection;
+mod recovery;
 pub mod runtime;
 mod vector;
 
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
-const SCHEMA: i64 = 2;
+const SCHEMA: i64 = 3;
 const MAX_BODY: usize = 65_536;
 const MAX_INPUTS: usize = 64;
 const MAX_ANCESTORS: usize = 10_000;
@@ -87,8 +91,8 @@ struct Record {
 }
 
 impl Store {
-    /// Open a local database. A copied database retains its commit history identity.
-    /// v0.1 has no backup restore/clone API; do not reuse old tokens across rollbacks.
+    /// Open a local database. Use `Store::restore` to recover a backup into a new
+    /// history. A manual filesystem copy retains the original history identity.
     pub fn open(path: impl AsRef<Path>) -> Result<Self> {
         let path = path.as_ref();
         if path != Path::new(":memory:") {
@@ -132,7 +136,7 @@ impl Store {
         connection.busy_timeout(Duration::from_secs(5))?;
         connection.execute_batch("PRAGMA foreign_keys=ON; PRAGMA synchronous=FULL;")?;
         let version: i64 = connection.query_row("PRAGMA user_version", [], |r| r.get(0))?;
-        if ![0, 1, SCHEMA].contains(&version) {
+        if ![0, 1, 2, SCHEMA].contains(&version) {
             return Err(Error::new(
                 "schema_mismatch",
                 "Unsupported database schema version.",
@@ -140,7 +144,7 @@ impl Store {
         }
         let tx = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
         let locked_version: i64 = tx.query_row("PRAGMA user_version", [], |r| r.get(0))?;
-        if ![0, 1, SCHEMA].contains(&locked_version) {
+        if ![0, 1, 2, SCHEMA].contains(&locked_version) {
             return Err(Error::new(
                 "schema_mismatch",
                 "Unsupported database schema version.",
@@ -206,8 +210,12 @@ impl Store {
         if locked_version < 2 {
             vector::schema(&tx)?;
             maintenance::schema(&tx)?;
-            tx.pragma_update(None, "user_version", SCHEMA)?;
         }
+        if locked_version < 3 {
+            ingestion::schema(&tx)?;
+            changes::schema(&tx)?;
+        }
+        tx.pragma_update(None, "user_version", SCHEMA)?;
         tx.commit()?;
         connection.pragma_update(None, "journal_mode", "WAL")?;
         Ok(Self { connection })
@@ -222,6 +230,8 @@ impl Store {
             .ok_or_else(|| Error::new("invalid_request", "params must be an object."))?;
         let allowed: &[&str] = match method {
             "status" | "export" => &[],
+            "changes" => &["after", "limit"],
+            "validate_context" => &["manifest"],
             "remember" => &[
                 "body",
                 "kind",
@@ -278,7 +288,8 @@ impl Store {
             ],
             "maintenance_retry" => &["task_id", "idempotency_key"],
             "maintenance_status" => &["limit"],
-            _ => return Err(Error::new("method_not_found", "Unknown method.")),
+            _ => ingestion::allowed(method)
+                .ok_or_else(|| Error::new("method_not_found", "Unknown method."))?,
         };
         if args.keys().any(|k| !allowed.contains(&k.as_str())) {
             return Err(Error::new("invalid_request", "Unknown parameter."));
@@ -298,7 +309,7 @@ impl Store {
                 | "maintenance_complete"
                 | "maintenance_fail"
                 | "maintenance_retry"
-        );
+        ) || ingestion::is_mutation(method);
         let tx = self.connection.transaction_with_behavior(if mutation {
             TransactionBehavior::Immediate
         } else {
@@ -345,6 +356,7 @@ impl Store {
                 )?;
                 receipt["commit_token"] = json!(commit_token(&tx)?);
                 receipt["durable"] = json!(true);
+                changes::append(&tx, namespace, method, &receipt)?;
                 tx.execute(
                     "INSERT INTO operations(namespace,method,key,request_hash,receipt) VALUES(?1,?2,?3,?4,?5)",
                     params![namespace, method, key, fingerprint, receipt.to_string()],
@@ -599,6 +611,9 @@ fn invalidate(db: &Connection, ns: &str, ids: &[String], erase: bool, at: i64) -
     }
     vector::invalidate(db, ns, ids)?;
     maintenance::on_invalidate(db, ns, ids, erase, at)?;
+    if erase {
+        ingestion::on_retract(db, ns, ids)?;
+    }
     Ok(())
 }
 fn job_meta(db: &Connection, ns: &str, id: &str) -> Result<(String, String, Option<String>)> {
@@ -819,7 +834,7 @@ fn mutate(db: &Connection, ns: &str, method: &str, v: &Value, at: i64) -> Result
         | "maintenance_complete"
         | "maintenance_fail"
         | "maintenance_retry" => maintenance::mutate(db, ns, method, v, at),
-        _ => Err(Error::new("method_not_found", "Unknown mutation.")),
+        _ => ingestion::mutate(db, ns, method, v, at),
     }
 }
 
@@ -851,7 +866,9 @@ fn read(db: &Connection, ns: &str, method: &str, v: &Value, at: i64) -> Result<V
                 json!({"version":VERSION,"schema_version":SCHEMA,"namespace":ns,"commit_token":commit_token(db)?,
                 "records":count,"capabilities":{"lexical_search":true,"embedding":true,"vector_search":true,
                 "hybrid_rrf":true,"model_calls":false,"managed_summaries":true,"repair_queue":true,
-                "lineage":true,"conditional_publish":true,"restore":false,"physical_erasure":false}}),
+                "lineage":true,"conditional_publish":true,"restore":true,
+                "candidate_admission":true,"exact_fact_identity":true,"change_feed":true,
+                "managed_projection":true,"physical_erasure":false}}),
             )
         }
         "inspect" => {
@@ -887,6 +904,8 @@ fn read(db: &Connection, ns: &str, method: &str, v: &Value, at: i64) -> Result<V
             Ok(result)
         }
         "recall" => recall(db, ns, v, at),
+        "changes" => changes::read(db, ns, v),
+        "validate_context" => validate_context(db, ns, v, at),
         "job" => {
             let id = string(v, "job_id")?;
             let (state, processor, output) = job_meta(db, ns, id)?;
@@ -941,7 +960,7 @@ fn read(db: &Connection, ns: &str, method: &str, v: &Value, at: i64) -> Result<V
         "plan" => plan(db, ns, v, at),
         "embedding_candidates" | "embedding_status" => vector::read(db, ns, method, v, at),
         "maintenance_job" | "maintenance_status" => maintenance::read(db, ns, method, v, at),
-        _ => Err(Error::new("method_not_found", "Unknown read.")),
+        _ => ingestion::read(db, ns, method, v, at),
     }
 }
 
@@ -1069,7 +1088,14 @@ fn recall(db: &Connection, ns: &str, v: &Value, at: i64) -> Result<Value> {
         item["trust_boundary"] = json!("retrieved_data");
         items.push(item);
     }
-    Ok(json!({"items":items,"commit_token":commit_token(db)?,
+    let token = commit_token(db)?;
+    let references: Vec<Value> = items
+        .iter()
+        .map(|item| json!({"id":item["id"],"revision":item["revision"]}))
+        .collect();
+    Ok(json!({"items":items,"commit_token":token,
+        "manifest":{"schema_version":"recall-ledger.context/1","namespace":ns,
+            "commit_token":token,"records":references},
         "budget":{"max_chars":budget,"used_chars":used,"unit":"unicode_scalars","bodies_only":true},
         "coverage":{"status":if deferred>0 {"budget_limited"} else {"complete_scan"},
         "deferred":deferred,"semantic_search":mode!="lexical","mode":mode,"model_key":key,
@@ -1079,6 +1105,85 @@ fn recall(db: &Connection, ns: &str, v: &Value, at: i64) -> Result<Value> {
         "vector_algorithm":if mode!="lexical" {Some("exact_cosine")} else {None},
         "fusion":if mode=="hybrid" {Some("rrf_k60_top1000_per_channel")} else {None},
         "scope":"active_current_records"}}))
+}
+
+/// Revalidate a previously compiled context against the current transaction,
+/// including time windows and transitive dependencies. It cannot remove text
+/// already delivered to a host or validate the semantic meaning of that text.
+fn validate_context(db: &Connection, ns: &str, v: &Value, at: i64) -> Result<Value> {
+    let manifest = v
+        .get("manifest")
+        .and_then(Value::as_object)
+        .ok_or_else(|| Error::new("invalid_request", "manifest must be an object."))?;
+    if manifest
+        .keys()
+        .any(|k| !["schema_version", "namespace", "commit_token", "records"].contains(&k.as_str()))
+        || manifest.get("schema_version") != Some(&json!("recall-ledger.context/1"))
+    {
+        return Err(Error::new(
+            "invalid_request",
+            "Unsupported context manifest.",
+        ));
+    }
+    if manifest.get("namespace") != Some(&json!(ns)) {
+        return Err(Error::new(
+            "namespace_mismatch",
+            "Context belongs to another namespace.",
+        ));
+    }
+    let token = manifest
+        .get("commit_token")
+        .ok_or_else(|| Error::new("invalid_request", "Context requires a commit token."))?;
+    check_commit(db, &json!({"minimum_commit":token}))?;
+    let refs = manifest
+        .get("records")
+        .and_then(Value::as_array)
+        .filter(|refs| refs.len() <= 100)
+        .ok_or_else(|| {
+            Error::new(
+                "invalid_request",
+                "Context requires at most 100 references.",
+            )
+        })?;
+    let mut invalid = Vec::new();
+    let mut seen = HashSet::new();
+    for reference in refs {
+        let object = reference
+            .as_object()
+            .ok_or_else(|| Error::new("invalid_request", "Context reference must be an object."))?;
+        if object
+            .keys()
+            .any(|k| !["id", "revision"].contains(&k.as_str()))
+        {
+            return Err(Error::new("invalid_request", "Unknown reference field."));
+        }
+        let id = string(reference, "id")?;
+        validate_name(id, "record ID")?;
+        let revision = integer(reference, "revision", -1, 1, i64::MAX)?;
+        if !seen.insert(id) {
+            return Err(Error::new(
+                "invalid_request",
+                "Duplicate context reference.",
+            ));
+        }
+        match get(db, ns, id) {
+            Ok(record) if record.revision != revision => {
+                invalid.push(json!({"id":id,"reason":"revision_changed"}));
+            }
+            Ok(record) => {
+                if !valid(db, ns, &record, at)? {
+                    invalid.push(json!({"id":id,"reason":"ineligible"}));
+                }
+            }
+            Err(error) if error.code == "not_found" => {
+                invalid.push(json!({"id":id,"reason":"unavailable"}));
+            }
+            Err(error) => return Err(error),
+        }
+    }
+    Ok(json!({"valid":invalid.is_empty(),"invalid":invalid,
+        "commit_token":commit_token(db)?,"checked_at":at,
+        "semantics_verified":false,"delivered_context_erased":false}))
 }
 
 fn plan(db: &Connection, ns: &str, v: &Value, at: i64) -> Result<Value> {

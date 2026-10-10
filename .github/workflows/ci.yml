@@ -2,6 +2,7 @@ name: CI
 
 on:
   push:
+    branches: ["**"]
   pull_request:
 
 permissions:
@@ -38,8 +39,8 @@ jobs:
         run: cargo clippy --locked --all-targets -- -D warnings
       - name: Run tests
         run: cargo test --locked --all-targets
-      - name: Test Python SDK transport
-        run: PYTHONPATH=sdk/python python3 -m unittest discover -s sdk/python/tests -v
+      - name: Test Python SDK and isolated Claude Code adapter
+        run: PYTHONPATH=sdk/python RECALL_LEDGER_BIN="$PWD/target/debug/recall-ledger" python3 -m unittest discover -s sdk/python/tests -v
       - name: Build release binary
         run: cargo build --release --locked
       - name: Run synthetic workflow

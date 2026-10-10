@@ -13,6 +13,7 @@ projects, not a replacement for the notices in their source distributions.
 | --- | --- | --- |
 | [clap](https://github.com/clap-rs/clap) | Command-line parsing | MIT OR Apache-2.0 |
 | [fs2](https://github.com/danburkert/fs2-rs) | File locking | MIT OR Apache-2.0 |
+| [libc](https://github.com/rust-lang/libc) | Unix no-follow and directory-open flags | MIT OR Apache-2.0 |
 | [reqwest](https://github.com/seanmonstar/reqwest) | Bounded loopback model HTTP requests | MIT OR Apache-2.0 |
 | [rusqlite](https://github.com/rusqlite/rusqlite) | SQLite bindings | MIT |
 | [serde](https://github.com/serde-rs/serde) | Serialization | MIT OR Apache-2.0 |

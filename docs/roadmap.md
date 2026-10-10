@@ -8,8 +8,16 @@ agents hand work to each other, and background processing fails. The project
 has not established state-of-the-art performance. This roadmap describes the
 work and comparisons needed to earn a narrower, reproducible claim.
 
-**Status:** the v0.2 mechanisms are implemented; every new interface below is a
-design proposal. No new behavioral benchmark, host acceptance run, or performance
+**v0.3 implementation update:** candidate intake and exact fact identity,
+`changes`, context manifests/validation, consistent backup/new-history restore,
+managed Markdown publication/read gates, and Claude Code project hooks are now
+implemented. See [the current contract](CONTRACT.md),
+[validation](VALIDATION-v0.3.md) and [review](REVIEW-v0.3.md). Hooks are tested
+with fixtures and actual local daemon processes; live Claude session acceptance,
+other framework backends, and the research proposals below remain open.
+
+**Original review status:** the v0.2 mechanisms were implemented; new interfaces
+below were proposals at the time of review. No new behavioral benchmark, host acceptance run, or performance
 experiment was executed for this document. A roadmap is not a frozen experimental
 protocol or a deployment commitment.
 

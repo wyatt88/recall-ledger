@@ -1,5 +1,26 @@
 # Changelog
 
+## 0.3.0 — 2026-10-10
+
+- Capture proposals with source attribution, durable event deduplication,
+  explicit acceptance/rejection, and exact scoped fact keys.
+- Apply accepted corrections through the revision, vector invalidation and
+  managed-summary repair lifecycle. Withhold known candidate bodies on retraction.
+- Add transactional body-free change events, recall manifests, and current-context
+  validation, including dependency and validity-window checks.
+- Add consistent SQLite backups and new-path restoration with a fresh history
+  identity, cleared receipts/cursors, and revoked worker leases.
+- Publish atomic managed Markdown generations; reject edited projections and
+  stale reads through the default database-aware reader.
+- Add Claude Code project hooks, durable offline candidate delivery, fresh
+  per-prompt recall, explicit Markdown migration, and recoverable settings changes.
+- Extend MCP to 14 tools and the Python SDK/CLI; migrate schema 1/2 to schema 3.
+
+The adapter is validated with protocol fixtures and real local daemon processes.
+A live Claude model session is not part of this release's validation.
+Admission remains explicit, summaries are not fact-checked, and no benchmark
+advantage or universal native-memory replacement is claimed.
+
 ## 0.2.0 — 2026-10-10
 
 - Add revision-bound embedding storage, exact cosine retrieval, and hybrid recall

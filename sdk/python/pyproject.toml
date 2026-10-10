@@ -4,11 +4,14 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "recall-ledger"
-version = "0.2.0"
-description = "Standard-library Unix-socket client for RecallLedger"
+version = "0.3.0"
+description = "Standard-library Unix-socket client and Claude Code project adapter for RecallLedger"
 requires-python = ">=3.9"
 license = {text = "Apache-2.0"}
 dependencies = []
+
+[project.scripts]
+recall-ledger-claude = "recall_ledger.claude_code:main"
 
 [tool.setuptools]
 packages = ["recall_ledger"]

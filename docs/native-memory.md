@@ -1,8 +1,12 @@
 # Integrating native memory and Markdown
 
-Design review: 2026-10-10. This is a proposed adapter contract, not an implemented
-host plugin. The current release provides a Rust store, local daemon, Python SDK,
-and MCP tools. It does not intercept native memory files or conversations.
+Design review: 2026-10-10, updated for v0.3. The
+[Claude Code project adapter](claude-code.md), [candidate admission](ingestion.md),
+[managed Markdown and backup/restore](recovery.md), and
+[change/context APIs](CONTRACT.md) now implement a bounded part of this design.
+Fixture and real-daemon tests do not establish live Claude session acceptance.
+Generic framework backends, automatic semantic extraction and arbitrary
+two-way Markdown synchronization remain proposals.
 
 ## Ownership is the integration problem
 
@@ -65,7 +69,7 @@ different lifetimes.
 
 ### Projection contract
 
-A planned manifest identifies the database history, commit/generation, record
+The v0.3 projection manifest identifies database history, commit/generation, record
 IDs and revisions, and content hashes. Generate into temporary files, then
 publish a complete generation atomically through a manifest/pointer switch.
 Readers must pin and validate that generation. Several unrelated file renames
@@ -125,7 +129,11 @@ queued processing has stopped.
 
 ## Migration and rollback
 
-The migration tool is future work. Its acceptance contract should cover:
+Version 0.3 imports an explicitly selected Markdown directory as pending
+candidates with path/hash/chunk provenance. Originals are preserved. Uninstall
+exports current readable records and keeps native auto memory disabled by
+default. This bounded implementation does not complete every acceptance item
+below, especially live-host shadow comparison and compaction behavior:
 
 1. Inventory only the selected dynamic memory scope; classify human rules
    separately. Preserve originals and path/content hashes.
@@ -140,8 +148,9 @@ The migration tool is future work. Its acceptance contract should cover:
 6. On rollback, preserve post-cutover changes and withdrawals. Restoring an old
    Markdown backup alone would lose new information or resurrect deleted facts.
 
-The current `export` operation is a diagnostic snapshot, **not** this migration
-or a full backup/restore implementation.
+The current `export` operation is a diagnostic snapshot. Full database backup
+and point-in-time restoration use the separate [recovery API](recovery.md);
+neither operation converts arbitrary notes into verified structured facts.
 
 ## Boundary that no adapter should hide
 

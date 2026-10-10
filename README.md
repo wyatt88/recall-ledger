@@ -7,10 +7,13 @@ records. When a source changes, its dependent results stop being readable. A
 worker that finishes late must validate its inputs before it can publish.
 Optional local models provide vector retrieval, automatic summaries, and repair
 of managed summaries after their sources change.
+Version 0.3 adds reviewed candidate ingestion, exact fact identities, durable
+change notifications, consistent backup/restore, and a Claude Code hook adapter.
 
 [中文说明](README.zh-CN.md) · [Architecture](docs/architecture.md) ·
 [API contract](docs/CONTRACT.md) · [Operations](docs/OPERATIONS.md) · [Research](docs/research.md) ·
 [Native memory integration](docs/native-memory.md) · [Roadmap](docs/roadmap.md) ·
+[Claude Code setup](docs/claude-code.md) · [Admission](docs/ingestion.md) · [Recovery](docs/recovery.md) ·
 [Contributing](CONTRIBUTING.md)
 
 ## Why this exists
@@ -28,8 +31,9 @@ remember → prepare inputs at known revisions → process externally → publis
                                       reject stale publication
 ```
 
-An adapter can use this contract behind a framework's long-term memory interface;
-0.2 does not ship a drop-in replacement for native host memory. Execution
+The Claude Code adapter captures pending proposals and reads fresh memory before
+each prompt. Explicit acceptance controls admission; conversation text does not
+automatically become verified fact. Execution
 checkpoints, model context, and model weights remain with their existing systems.
 
 ## What RecallLedger adds to native memory
@@ -45,7 +49,7 @@ an existing system.
 
 The useful comparison is what happens when a remembered fact changes:
 
-| Situation | RecallLedger 0.2 mechanism | Benefit within the managed path | Inspectable evidence |
+| Situation | RecallLedger 0.3 mechanism | Benefit within the managed path | Inspectable evidence |
 | --- | --- | --- | --- |
 | A corrected source has summaries derived from summaries | Revision-bound dependency edges and transitive invalidation in the mutation transaction | Descendants stop being served as current; updating only the original note is insufficient | [Core contracts](tests/core_contract.rs) |
 | A slow worker finishes after the correction | `prepare`/`publish` input validation; managed workers also check leases and output revisions | Old work cannot overwrite a newer managed result or revive a withdrawn one | [Maintenance tests](tests/maintenance.rs) |
@@ -53,6 +57,9 @@ The useful comparison is what happens when a remembered fact changes:
 | A write succeeds but its reply is lost | Mutation and idempotency receipt commit together; edits require `expected_revision` | Identical retries recover the result; competing edits receive a conflict | [Core contracts](tests/core_contract.rs) |
 | A summary needs rebuilding after a restart | Persistent recipes, task generations, leases, bounded retries, stable output IDs | Managed repair resumes without making obsolete text readable while repair fails | [Runtime tests](tests/runtime_contract.rs) |
 | Semantic indexing or the query model is unavailable | Explicit index coverage, character budgets, and reported lexical degradation | The caller can distinguish reduced retrieval from a complete semantic result | [API contract](docs/CONTRACT.md#recall) |
+| A message corrects an existing fact | Pending candidates, exact scoped fact keys, revision-checked acceptance | Reviewed corrections retain the fact ID and trigger repair | [Admission tests](tests/ingestion.rs) |
+| A packet or Markdown export predates a correction | Body-free change feed, context manifests, live-gated projection reads | Controlled readers detect stale revisions and time expiry | [Freshness](tests/changes.rs), [projection](tests/projection.rs) |
+| A database needs recovery | SQLite online backup, new-path restore with a new history identity | Old tokens fail; old leases cannot publish | [Recovery tests](tests/recovery.rs) |
 
 For example, changing “launch in April” to “launch in August” withdraws the
 managed summary that used April, rejects any outstanding generation using that
@@ -77,7 +84,8 @@ and refresh after corrections or context compaction.
 | Integration level | Status | Ownership |
 | --- | --- | --- |
 | MCP / SDK alongside native memory | Available interfaces; host acceptance still required | Two stores coexist unless the application explicitly routes memory through RecallLedger |
-| Managed Markdown compatibility | Planned | RecallLedger owns dynamic records; Markdown is a versioned, rebuildable view |
+| Managed Markdown compatibility | Implemented with explicit refresh and a live read gate | RecallLedger owns dynamic records; Markdown is a versioned, rebuildable view |
+| Claude Code project hooks | Implemented; fixture and real-daemon tests, live Claude acceptance pending | Disable native auto memory in the selected project, capture pending proposals, inject fresh recall |
 | Framework-native memory backend | Planned adapters | The framework routes long-term reads and writes through RecallLedger; it keeps its own checkpoints |
 
 Keep human-authored `AGENTS.md`, `CLAUDE.md`, and project rules. Learned facts
@@ -89,7 +97,7 @@ edits, session refresh, and the limits of revoking copies.
 
 ## Current scope
 
-The 0.2 source preview targets one machine:
+The 0.3 source preview targets one machine:
 
 | Available surface | Behavior |
 | --- | --- |
@@ -104,6 +112,10 @@ The 0.2 source preview targets one machine:
 | Local daemon | Unix-domain socket on macOS/Linux; no HTTP listener |
 | MCP adapter | Record operations, summary enqueue, and maintenance status over stdio |
 | Python SDK | Client for the local daemon |
+| Candidate admission | Explicit review, durable event deduplication, exact fact-key corrections |
+| Freshness | Durable change cursor, recall manifest, current-context validation |
+| Backup and restore | Consistent SQLite snapshot; new-path, new-history restoration |
+| Markdown and host adapter | Atomic managed generations, stale-read rejection, Claude Code hooks and migration CLI |
 | Experimental grouping | Deterministic grouping rules for later consolidation experiments |
 
 The record store and lexical retrieval work without models. Semantic retrieval
@@ -115,7 +127,7 @@ Repository-state validation, learned memory selection, cost-optimal repair
 selection, and benchmark quality results remain future work. Generated summaries
 are not fact-checked, and model fluency is not evidence of source fidelity.
 
-The next priorities are host ownership and Markdown migration, applicability
+The next priorities are live host acceptance, applicability
 checks against the current task/environment, and equal-budget behavioral
 evaluation. See the [acceptance gates](docs/roadmap.md#delivery-gates).
 
@@ -137,7 +149,7 @@ bash examples/workflow.sh
 Install the current source preview:
 
 ```sh
-cargo install --git https://github.com/wyatt88/recall-ledger.git --tag v0.2.0 --locked
+cargo install --git https://github.com/wyatt88/recall-ledger.git --tag v0.3.0 --locked
 ```
 
 The package has not been published to crates.io or PyPI. The Python SDK ships in
@@ -170,6 +182,12 @@ arguments returns a conflict. Use `operation` to retrieve the original receipt.
 Maintenance passes manage their individual transaction keys internally.
 
 ## Run beside an agent
+
+For Claude Code, start a daemon as below, then follow the
+[project adapter installation guide](docs/claude-code.md). It preserves human
+rules, captures pending proposals durably, and refreshes memory every prompt.
+Uninstall exports current readable records and keeps native auto memory disabled
+by default to avoid reviving old notes.
 
 Edit [models.local.json](examples/models.local.json) to match your own local
 servers: complete endpoint URLs, returned model names, explicit weight revisions,
@@ -275,9 +293,13 @@ into its own profile or context, RecallLedger cannot retract that copy.
   training data are outside this contract.
 - Namespaces are an application boundary, not a sandbox against hostile code
   running as the same operating-system user. CLI and library access are trusted.
-- `export` is a diagnostic snapshot, not a backup or restore format. Restoring or
-  cloning database files is outside the commit-token contract. Opening a v0.1
-  database migrates it to schema 2; older binaries cannot open that schema.
+- `export` is a diagnostic snapshot. Use `backup` and `restore` for recovery;
+  restore creates a new history and invalidates old tokens. Changes after the
+  backup are not retained. Manual file copying bypasses this protocol.
+  Schema 1/2 databases migrate to schema 3 on open.
+- Candidate origin labels and acceptance are supplied by trusted callers. Exact
+  fact keys do not perform entity discovery or factual verification. Unknown
+  copies remain outside retraction.
 - The configured model `revision` is an operator declaration. The provider
   protocol does not prove which weights a server actually loaded. Change the
   revision whenever weights or encoding behavior change.
@@ -293,14 +315,16 @@ for the boundaries in detail.
 cargo fmt --all -- --check
 cargo clippy --locked --all-targets -- -D warnings
 cargo test --locked --all-targets
-PYTHONPATH=sdk/python python3 -m unittest discover -s sdk/python/tests
+PYTHONPATH=sdk/python RECALL_LEDGER_BIN="$PWD/target/debug/recall-ledger" \
+  python3 -m unittest discover -s sdk/python/tests
 ```
 
 CI runs the Rust checks on Ubuntu and macOS. A green test run establishes only
 the cases covered by that run. It does not establish production readiness,
 superior agent task performance, or successful paper reproduction.
 
-[v0.2 validation](docs/VALIDATION-v0.2.md) separates deterministic tests,
+[v0.3 validation](docs/VALIDATION-v0.3.md) and [review](docs/REVIEW-v0.3.md)
+cover the new lifecycle paths. [v0.2 validation](docs/VALIDATION-v0.2.md) separates deterministic tests,
 HTTP stubs, and the real local model smoke. The [review](docs/REVIEW-v0.2.md)
 records independently designed counterexamples and remaining limitations.
 

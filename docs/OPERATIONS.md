@@ -1,6 +1,6 @@
 # Running local models and maintenance
 
-RecallLedger 0.2 is a source preview. Run your own OpenAI-compatible embedding
+RecallLedger 0.3 is a source preview. Run your own OpenAI-compatible embedding
 and chat model servers first. The project neither downloads models nor starts a
 cloud service. A record-only deployment needs neither server.
 
@@ -200,11 +200,19 @@ readable again.
 
 ## Data and release boundaries
 
-Opening a version 1 database upgrades it transactionally to schema 2. Before
+Opening a schema 1/2 database upgrades it transactionally to schema 3. Before
 upgrading important data, take a consistent SQLite backup with writers stopped
 or SQLite's backup mechanism. Do not copy only the main file while WAL writes
-are active. RecallLedger has no managed restore/clone API, and old binaries
-cannot open the upgraded database.
+are active. Version 0.3 supplies [consistent backup and new-history restoration](recovery.md).
+Old binaries cannot open the upgraded database. A v0.3 backup must use schema 3;
+for an older snapshot, migrate a separate copy first. Restore requires a fresh
+target path with no preexisting SQLite sidecars.
+
+The [Claude Code adapter](claude-code.md) supplies project hooks, explicit
+Markdown migration and recoverable settings changes. Its default uninstall
+keeps native auto memory disabled so old notes are not silently reactivated.
+Use [candidate admission](ingestion.md) to review and resolve captured proposals.
+Freshness feeds and manifests are documented in the [contract](CONTRACT.md).
 
 Deletion clears managed records and indexes, not physical SQLite pages, model
 server logs, backups, or copies already delivered to agents. Locality alone is

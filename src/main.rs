@@ -22,6 +22,31 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Command {
+    /// Create a consistent private SQLite backup at a new path.
+    Backup {
+        #[arg(long)]
+        destination: PathBuf,
+    },
+    /// Restore a backup to a new database and a new commit history identity.
+    Restore {
+        #[arg(long)]
+        backup: PathBuf,
+        #[arg(long)]
+        destination: PathBuf,
+    },
+    /// Generate a versioned Markdown data view without touching native rules.
+    Project {
+        #[arg(long)]
+        directory: PathBuf,
+    },
+    /// Verify the Markdown generation against the current database before reading.
+    ReadProjection {
+        #[arg(long)]
+        directory: PathBuf,
+        /// Audit file checksums without checking database state or time expiry.
+        #[arg(long)]
+        offline_integrity_only: bool,
+    },
     /// Execute a trusted local administrative operation directly against SQLite.
     Call {
         method: String,
@@ -95,6 +120,33 @@ fn print_result(result: &Value) {
 
 fn run(cli: Cli) -> Result<(), recall_ledger::Error> {
     match cli.command {
+        Command::Backup { destination } => {
+            print_result(&Store::open(cli.db)?.backup(destination)?);
+            Ok(())
+        }
+        Command::Restore {
+            backup,
+            destination,
+        } => {
+            print_result(&Store::restore(backup, destination)?);
+            Ok(())
+        }
+        Command::Project { directory } => {
+            print_result(&Store::open(cli.db)?.project(&cli.namespace, directory)?);
+            Ok(())
+        }
+        Command::ReadProjection {
+            directory,
+            offline_integrity_only,
+        } => {
+            let result = if offline_integrity_only {
+                recall_ledger::projection::read_projection(directory)?
+            } else {
+                Store::open(cli.db)?.read_current_projection(&cli.namespace, directory)?
+            };
+            print_result(&result);
+            Ok(())
+        }
         Command::Call { method, params } => {
             let params: Value = serde_json::from_str(&params)
                 .map_err(|err| transport::failure("invalid_json", err.to_string(), false))?;

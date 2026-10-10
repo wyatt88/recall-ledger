@@ -2,7 +2,7 @@
 
 ## Supported scope
 
-RecallLedger 0.2 is an early local memory implementation. Security fixes target
+RecallLedger 0.3 is an early local memory implementation. Security fixes target
 the latest source on the main branch. There is no long-term support commitment
 for historical snapshots.
 

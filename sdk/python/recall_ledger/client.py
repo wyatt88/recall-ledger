@@ -163,3 +163,64 @@ class Client:
     def maintenance_status(self, *, limit: int = 100) -> Any:
         """Read bounded task metadata and aggregate state counts."""
         return self.call("maintenance_status", {"limit": limit})
+
+    def candidate_submit(
+        self,
+        body: str,
+        *,
+        event_id: str,
+        origin: str,
+        source: str,
+        idempotency_key: str,
+        **metadata: Any,
+    ) -> Any:
+        """Submit an untrusted proposal. Submission never admits a fact."""
+        return self.call(
+            "candidate_submit",
+            dict(
+                metadata, body=body, event_id=event_id, origin=origin,
+                source=source, idempotency_key=idempotency_key,
+            ),
+        )
+
+    def candidate_list(self, *, state: Optional[str] = None, limit: int = 50) -> Any:
+        """Read proposal metadata; use candidate_inspect to review its body."""
+        params = {"limit": limit}
+        if state is not None:
+            params["state"] = state
+        return self.call("candidate_list", params)
+
+    def candidate_inspect(self, candidate_id: str) -> Any:
+        return self.call("candidate_inspect", {"candidate_id": candidate_id})
+
+    def candidate_resolve(
+        self,
+        candidate_id: str,
+        decision: str,
+        *,
+        idempotency_key: str,
+        expected_revision: Optional[int] = None,
+    ) -> Any:
+        """Explicit admission/rejection; a revision is required for fact changes."""
+        params = {
+            "candidate_id": candidate_id,
+            "decision": decision,
+            "idempotency_key": idempotency_key,
+        }
+        if expected_revision is not None:
+            params["expected_revision"] = expected_revision
+        return self.call("candidate_resolve", params)
+
+    def fact_get(self, fact_key: Dict[str, str]) -> Any:
+        return self.call("fact_get", {"fact_key": fact_key})
+
+    def changes(self, *, after: Optional[str] = None, limit: int = 100) -> Any:
+        """Read invalidation metadata, not changed record bodies."""
+        params = {"limit": limit}
+        if after is not None:
+            params["after"] = after
+        return self.call("changes", params)
+
+    def validate_context(self, manifest: Dict[str, Any]) -> Any:
+        """Validate cited revisions; cannot erase an existing host prompt."""
+        return self.call("validate_context", {"manifest": manifest})

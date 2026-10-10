@@ -1,4 +1,4 @@
-# v0.2 contract
+# v0.3 contract
 
 This document describes the source preview. It does not establish production
 readiness, model grounding, or benchmark quality.
@@ -56,7 +56,48 @@ still-running request.
 
 Commit tokens carry database identity and sequence. `minimum_commit` is checked
 before query inference and again on the final read. It is not a snapshot held
-through a model request, a wall-clock guarantee, or a restore/clone protocol.
+through a model request or a wall-clock guarantee. Supported restore rotates
+history identity and rejects old tokens; manual filesystem cloning does not.
+
+## Candidate admission and fact identity
+
+`candidate_submit`, `candidate_list`, `candidate_inspect`, `candidate_resolve`
+and `fact_get` implement [explicit proposal admission](ingestion.md).
+All origins begin pending. Fact identity is the exact namespace-local tuple
+`{entity,attribute,scope,conditions}`. Accepting an existing identity requires
+its current revision, uses the ordinary revision path, and never merges by
+vector similarity. Origin and acceptance are trusted caller assertions, not
+human authentication or truth verification.
+
+## Change feed and context validation
+
+`changes` takes optional `after` (a commit token) and `limit` (1–500, default 100).
+It returns `events`, `cursor`, `has_more`, and `commit_token`. Events commit with
+the mutation and its receipt; replaying the same idempotency key adds no event.
+They contain method, token and optional primary record IDs, never bodies.
+`record_ids_complete=false`: refresh the full context rather than treating IDs
+as a complete list of affected descendants.
+Keep paging with the returned cursor; a restored/foreign history returns
+`commit_history_mismatch`. Initial reads request full resync, including after
+an older-schema migration where historical events were not backfilled.
+
+`recall` also returns a `recall-ledger.context/1` manifest containing namespace,
+commit token and selected `{id,revision}` references. `validate_context` accepts
+that exact `manifest` and checks revisions, current eligibility and transitive
+dependencies in one read transaction. It returns `valid`, body-free invalid
+references and the current token. It does not verify semantics. Time expiry
+does not write a change event, so a quiet feed does not establish freshness.
+Previously delivered text remains outside the store's control.
+
+## Backup, restoration and Markdown
+
+Trusted local library/CLI operations provide `backup`, `restore`, `project`
+and `read-projection`; they are not filesystem-write tools exposed over MCP.
+See [recovery contracts](recovery.md). Restore requires a new destination,
+changes history identity and revokes old work. It restores the backup time point,
+including content retracted only after that backup. Schema upgrade itself
+does not reset history. Native host integration is described in the
+[Claude Code adapter](claude-code.md).
 
 ## Recall
 
@@ -172,7 +213,7 @@ publishing a result; use smaller groups when input limits are reached.
 Response model, vector shape, finish status, and output length are
 validated. This is protocol validation, not a proof of factual correctness.
 
-Schema 1 databases migrate transactionally to schema 2 on open. Unknown schema
-versions are refused. Older binaries cannot open schema 2. Backup, clone identity,
+Schema 1/2 databases migrate transactionally to schema 3 on open. Unknown schema
+versions are refused. Older binaries cannot open schema 3. Manual file cloning,
 secure physical erasure, ANN scalability, repository-state verification, and
 hidden model/tool provenance are outside this contract.

@@ -1,6 +1,6 @@
 # Architecture
 
-RecallLedger 0.2 is a local, revision-aware record store with optional local model
+RecallLedger 0.3 is a local, revision-aware record store with optional local model
 execution and durable maintenance. Its core responsibility
 is deciding whether a result derived from known inputs may be published and
 read. It does not decide whether the result is factually true.
@@ -250,16 +250,19 @@ The core can enforce its local contract without a model. Whether using the
 resulting memory improves task outcomes requires a separate comparison with a
 strong native-store baseline, equal processing budgets, and independent tasks.
 
-The [native memory design](native-memory.md) defines proposed ownership,
-Markdown projection, and context-refresh behavior. Those adapters are not
-implemented in v0.2. The [roadmap](roadmap.md) separates this integration work
+The [native memory design](native-memory.md) defines ownership,
+Markdown projection, and context-refresh behavior. Version 0.3 implements
+[explicit fact admission](ingestion.md), transactional change notifications,
+context manifests, [live-gated Markdown and recovery](recovery.md), and one
+[Claude Code hook adapter](claude-code.md). The [roadmap](roadmap.md) separates this integration work
 from applicability checks, research hypotheses, and behavioral acceptance gates.
 
 ## Future work
 
-Features that are not supplied by 0.2 include:
+Features that are not supplied by 0.3 include:
 
-- General backup, restore, and clone protocols. Schema 1 to 2 migration is present.
+- Live acceptance across multiple Agent hosts and transparent arbitrary-file sync.
+- Semantic entity discovery, automatic verified admission, and generated-prose fidelity checks.
 - Cost-optimal repair selection and automatic reruns of arbitrary manual processors.
 - ANN indexing, rerankers, and graph similarity retrieval.
 - Captured repository and tool-state preconditions for coding agents.

@@ -1,6 +1,6 @@
 [package]
 name = "recall-ledger"
-version = "0.2.0"
+version = "0.3.0"
 edition = "2021"
 rust-version = "1.89"
 description = "Local-first, revision-aware memory infrastructure for agents"
@@ -13,7 +13,8 @@ categories = ["database", "command-line-utilities"]
 [dependencies]
 clap = { version = "4.5", features = ["derive"] }
 fs2 = "0.4"
-rusqlite = { version = "0.37", features = ["bundled"] }
+rusqlite = { version = "0.37", features = ["bundled", "backup"] }
+libc = "0.2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 sha2 = "0.10"

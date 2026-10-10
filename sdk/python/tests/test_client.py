@@ -142,6 +142,56 @@ class ClientTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             self.client.summarize("single-string", idempotency_key="invalid")
 
+    def test_candidate_submission_preserves_origin_event_key_and_fact_identity(self):
+        fact_key = {"entity": "project", "attribute": "language", "scope": "repo", "conditions": "default"}
+
+        def handler(stream, request):
+            self.assertEqual(request["method"], "candidate_submit")
+            self.assertEqual(request["params"], {
+                "event_id": "host-event-1", "body": "Rust", "origin": "user_message",
+                "source": "fixture", "idempotency_key": "stable-key", "fact_key": fact_key,
+            })
+            result = {"candidate_id": "candidate-1", "state": "pending", "record_id": None}
+            stream.sendall(json.dumps({"id": request["id"], "result": result}).encode() + b"\n")
+
+        self.serve(handler)
+        result = self.client.candidate_submit(
+            "Rust", event_id="host-event-1", origin="user_message", source="fixture",
+            idempotency_key="stable-key", fact_key=fact_key,
+        )
+        self.assertIsNone(result["record_id"])
+
+    def test_candidate_resolution_sends_explicit_revision_and_original_key(self):
+        def handler(stream, request):
+            self.assertEqual(request["method"], "candidate_resolve")
+            self.assertEqual(request["params"], {
+                "candidate_id": "candidate-1", "decision": "accept",
+                "expected_revision": 7, "idempotency_key": "review-7",
+            })
+            stream.sendall(json.dumps({"id": request["id"], "error": {
+                "code": "revision_conflict", "message": "record changed", "retryable": False,
+            }}).encode() + b"\n")
+
+        self.serve(handler)
+        with self.assertRaises(MemoryError) as caught:
+            self.client.candidate_resolve("candidate-1", "accept", expected_revision=7, idempotency_key="review-7")
+        self.assertEqual(caught.exception.code, "revision_conflict")
+
+    def test_context_validation_passes_exact_manifest(self):
+        manifest = {
+            "schema_version": "recall-ledger.context/1", "namespace": "fixture",
+            "commit_token": "uuid:4", "records": [{"id": "record-1", "revision": 3}],
+        }
+
+        def handler(stream, request):
+            self.assertEqual(request["method"], "validate_context")
+            self.assertEqual(request["params"], {"manifest": manifest})
+            result = {"valid": False, "invalid": [{"id": "record-1", "reason": "revision_changed"}], "commit_token": "uuid:5"}
+            stream.sendall(json.dumps({"id": request["id"], "result": result}).encode() + b"\n")
+
+        self.serve(handler)
+        self.assertFalse(self.client.validate_context(manifest)["valid"])
+
 
 if __name__ == "__main__":
     unittest.main()
