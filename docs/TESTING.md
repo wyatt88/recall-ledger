@@ -4,6 +4,25 @@ The current [v0.4 validation](VALIDATION-v0.4.md) covers local host adapters,
 database binding, stdio MCP and Python wheel installation. Older execution
 records below are retained as historical observations.
 
+The post-v0.4 portable extension adds `tests/portable.rs`,
+`tests/portable_cli.rs`, and `sdk/python/tests/test_handoff.py`. The runnable
+`examples/migration_handoff.py` exercises two actual local daemons with synthetic
+data. See [the development validation record](VALIDATION-portability.md) for the
+executed checks and the independently reproduced branch-conflict fix.
+
+The source-preservation extension adds `tests/fidelity.rs`,
+`tests/fidelity_runtime.rs`, `tests/fact_metadata_reads.rs`, and the real
+model-free daemon tests in `sdk/python/tests/test_fidelity.py`.
+`examples/fidelity_regression.py` runs 64 correction cycles by default, with
+direct-source reads as the baseline, then budget failure/recovery and migration.
+The 73 checkpoints include conditions stored only in structured fact keys.
+Local HTTP fixtures also verify qualified source inputs to explicit model
+summarization; they do not measure the model's interpretation.
+All are synthetic engineering checks. They do not measure semantic quality or
+show superiority over native memory.
+See [the source-preservation validation record](VALIDATION-fidelity.md) for the
+separate independent CLI/daemon probes and the actual execution results.
+
 The tests exercise the public `Store::execute` contract using fresh temporary
 databases. They do not mock the Store, reproduce its SQL, or substitute a second
 invalidation implementation as the expected result.

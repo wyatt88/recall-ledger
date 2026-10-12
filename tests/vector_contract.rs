@@ -666,7 +666,7 @@ fn concurrent_v1_migration_preserves_history_receipts_and_prepared_work() {
         .collect();
     for thread in threads {
         let status = thread.join().unwrap();
-        assert_eq!(status["schema_version"], 3);
+        assert_eq!(status["schema_version"], 4);
         assert_eq!(status["commit_token"], "legacy-history:7");
     }
     let mut store = Store::open(&path).unwrap();

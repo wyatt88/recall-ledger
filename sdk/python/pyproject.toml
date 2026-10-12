@@ -16,6 +16,7 @@ recall-ledger-chatgpt = "recall_ledger.chatgpt:main"
 recall-ledger-codex = "recall_ledger.codex:main"
 recall-ledger-kirocrew = "recall_ledger.kirocrew:main"
 recall-ledger-opencode = "recall_ledger.opencode:main"
+recall-ledger-handoff = "recall_ledger.handoff:main"
 
 [tool.setuptools]
 packages = ["recall_ledger"]

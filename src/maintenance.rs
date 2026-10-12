@@ -206,6 +206,29 @@ fn task_metadata(t: &Task) -> Value {
     })
 }
 
+fn evidence_for_task(db: &Connection, ns: &str, t: &Task, at: i64) -> Result<fidelity::Capsule> {
+    fidelity::build(db, ns, &input_ids(db, &t.recipe_id)?, t.max_chars, at)
+}
+
+fn guarded_evidence(
+    db: &Connection,
+    ns: &str,
+    t: &Task,
+    captured: &[Record],
+    at: i64,
+) -> Result<fidelity::Capsule> {
+    let capsule = evidence_for_task(db, ns, t, at)?;
+    let snapshot: BTreeMap<_, _> = captured.iter().map(|r| (&r.id, r.revision)).collect();
+    let current: BTreeMap<_, _> = capsule.guards.iter().map(|r| (&r.id, r.revision)).collect();
+    if snapshot != current {
+        return Err(Error::new(
+            "stale_dependency",
+            "Evidence read set changed after claim.",
+        ));
+    }
+    Ok(capsule)
+}
+
 pub(super) fn mutate(db: &Connection, ns: &str, method: &str, v: &Value, at: i64) -> Result<Value> {
     match method {
         "summary_create" => create(db, ns, v, at),
@@ -233,7 +256,12 @@ fn create(db: &Connection, ns: &str, v: &Value, at: i64) -> Result<Value> {
     }
     let processor = string(v, "processor")?;
     validate_name(processor, "processor")?;
-    let max_chars = integer(v, "max_chars", 2000, 1, 16_384)?;
+    let strict = processor == fidelity::PROCESSOR;
+    let max_chars = if strict {
+        fidelity::max_chars(v)?
+    } else {
+        integer(v, "max_chars", 2000, 1, 16_384)?
+    };
     let mut seen = HashSet::new();
     let mut inputs = Vec::new();
     for value in input_values {
@@ -247,7 +275,17 @@ fn create(db: &Connection, ns: &str, v: &Value, at: i64) -> Result<Value> {
         require_valid(db, ns, &r, at)?;
         inputs.push(r);
     }
-    check_input_budget(&inputs)?;
+    if strict {
+        fidelity::build(
+            db,
+            ns,
+            &inputs.iter().map(|r| r.id.clone()).collect::<Vec<_>>(),
+            max_chars,
+            at,
+        )?;
+    } else {
+        check_input_budget(&inputs)?;
+    }
     let recipe_id = Uuid::new_v4().to_string();
     let task_id = Uuid::new_v4().to_string();
     let output_id = Uuid::new_v4().to_string();
@@ -277,21 +315,68 @@ fn claim(db: &Connection, ns: &str, v: &Value, at: i64) -> Result<Value> {
     let worker = string(v, "worker")?;
     validate_name(worker, "worker")?;
     let seconds = integer(v, "lease_seconds", 120, 1, 3600)?;
+    let processor = v
+        .get("processor")
+        .map(|_| string(v, "processor"))
+        .transpose()?;
+    if let Some(processor) = processor {
+        validate_name(processor, "processor")?;
+    }
     let mut stmt = db.prepare(
         "SELECT t.id FROM maintenance_tasks t JOIN summary_recipes r ON r.id=t.recipe_id
          WHERE t.namespace=?1 AND r.status='active' AND t.attempts<5
+           AND (?3 IS NULL OR r.processor=?3)
            AND ((t.state='pending' AND t.next_attempt_at<=?2)
              OR (t.state='leased' AND t.lease_until<=?2))
-         ORDER BY t.created_at,t.rowid",
+         ORDER BY t.created_at,t.rowid LIMIT 64",
     )?;
     let candidates = stmt
-        .query_map(params![ns, at], |r| r.get::<_, String>(0))?
+        .query_map(params![ns, at, processor], |r| r.get::<_, String>(0))?
         .collect::<std::result::Result<Vec<_>, _>>()?;
+    let mut state_changed = false;
+    let mut failed_tasks = 0;
+    let mut deferred_tasks = 0;
     for id in candidates {
         let t = task(db, ns, &id)?;
-        let inputs = match current_inputs(db, ns, &t.recipe_id, at) {
+        let strict = t.processor == fidelity::PROCESSOR;
+        let built_inputs = if strict {
+            evidence_for_task(db, ns, &t, at).map(|capsule| capsule.guards)
+        } else {
+            current_inputs(db, ns, &t.recipe_id, at)
+        };
+        let inputs = match built_inputs {
             Ok(inputs) => inputs,
             Err(error) if ["not_found", "stale_dependency"].contains(&error.code.as_str()) => {
+                // Keep bounded scans moving beyond temporarily ineligible tasks.
+                // Any source update/publish reschedules these immediately.
+                db.execute(
+                    "UPDATE maintenance_tasks SET state='pending',next_attempt_at=?1,
+                     lease_token=NULL,lease_until=NULL,worker=NULL,output_revision=NULL,
+                     updated_at=?2 WHERE id=?3",
+                    params![at + 30, at, id],
+                )?;
+                db.execute("DELETE FROM maintenance_inputs WHERE task_id=?1", [&id])?;
+                state_changed = true;
+                deferred_tasks += 1;
+                continue;
+            }
+            Err(error)
+                if strict
+                    && [
+                        "resource_exhausted",
+                        "evidence_sources_missing",
+                        "invalid_dependency",
+                    ]
+                    .contains(&error.code.as_str()) =>
+            {
+                db.execute(
+                    "UPDATE maintenance_tasks SET state='failed',attempts=attempts+1,error_code=?1,
+                     lease_token=NULL,lease_until=NULL,worker=NULL,output_revision=NULL,updated_at=?2 WHERE id=?3",
+                    params![error.code,at,id],
+                )?;
+                db.execute("DELETE FROM maintenance_inputs WHERE task_id=?1", [&id])?;
+                state_changed = true;
+                failed_tasks += 1;
                 continue;
             }
             Err(error) => return Err(error),
@@ -319,21 +404,41 @@ fn claim(db: &Connection, ns: &str, v: &Value, at: i64) -> Result<Value> {
         receipt["claimed"] = json!(true);
         receipt["lease_token"] = json!(token);
         receipt["output_revision"] = json!(revision);
+        receipt["state_changed"] = json!(state_changed);
+        receipt["failed_tasks"] = json!(failed_tasks);
+        receipt["deferred_tasks"] = json!(deferred_tasks);
         receipt["dependencies"] = json!(inputs
             .iter()
             .map(|r| json!({"id":r.id,"revision":r.revision}))
             .collect::<Vec<_>>());
         return Ok(receipt);
     }
-    Ok(json!({"claimed":false}))
+    Ok(
+        json!({"claimed":false,"state_changed":state_changed,"failed_tasks":failed_tasks,"deferred_tasks":deferred_tasks}),
+    )
 }
 
 fn complete(db: &Connection, ns: &str, v: &Value, at: i64) -> Result<Value> {
     let t = task(db, ns, string(v, "task_id")?)?;
     lease_guard(&t, v, at)?;
     let inputs = captured_inputs(db, ns, &t, at)?;
-    check_input_budget(&inputs)?;
+    let strict = t.processor == fidelity::PROCESSOR;
+    let evidence = if strict {
+        Some(guarded_evidence(db, ns, &t, &inputs, at)?)
+    } else {
+        check_input_budget(&inputs)?;
+        None
+    };
     let text = body(v)?;
+    if evidence
+        .as_ref()
+        .is_some_and(|capsule| capsule.body != text)
+    {
+        return Err(Error::new(
+            "fidelity_mismatch",
+            "Evidence completion must exactly equal the current canonical source capsule.",
+        ));
+    }
     if text.chars().count() > t.max_chars as usize {
         return Err(Error::new(
             "invalid_request",
@@ -412,11 +517,16 @@ fn complete(db: &Connection, ns: &str, v: &Value, at: i64) -> Result<Value> {
         params![at, t.id],
     )?;
     db.execute("DELETE FROM maintenance_inputs WHERE task_id=?1", [&t.id])?;
-    Ok(json!({
+    let mut receipt = json!({
         "task_id":t.id,"recipe_id":t.recipe_id,"id":t.output_id,"output_id":t.output_id,
         "revision":revision,"generation":t.generation,"state":"succeeded",
         "index_state":"lexical_ready"
-    }))
+    });
+    if let Some(capsule) = evidence {
+        receipt["fidelity"] = capsule.fidelity();
+        receipt["coverage"] = capsule.coverage;
+    }
+    Ok(receipt)
 }
 
 fn fail(db: &Connection, ns: &str, v: &Value, at: i64) -> Result<Value> {
@@ -487,7 +597,12 @@ pub(super) fn read(db: &Connection, ns: &str, method: &str, v: &Value, at: i64) 
             let t = task(db, ns, string(v, "task_id")?)?;
             lease_guard(&t, v, at)?;
             let inputs = captured_inputs(db, ns, &t, at)?;
-            check_input_budget(&inputs)?;
+            let evidence = if t.processor == fidelity::PROCESSOR {
+                Some(guarded_evidence(db, ns, &t, &inputs, at)?)
+            } else {
+                check_input_budget(&inputs)?;
+                None
+            };
             if output_revision(db, ns, &t.output_id)? != t.output_revision {
                 return Err(Error::new(
                     "revision_conflict",
@@ -495,7 +610,18 @@ pub(super) fn read(db: &Connection, ns: &str, method: &str, v: &Value, at: i64) 
                 ));
             }
             let mut result = task_metadata(&t);
-            result["inputs"] = json!(inputs);
+            if let Some(capsule) = evidence {
+                result["inputs"] = json!(capsule.roots);
+                result["dependencies"] = capsule.references();
+                result["evidence_body"] = json!(capsule.body);
+                result["fidelity"] = capsule.fidelity();
+                result["coverage"] = capsule.coverage;
+            } else {
+                result["inputs"] = json!(inputs
+                    .iter()
+                    .map(|record| record_value(db, ns, record))
+                    .collect::<Result<Vec<_>>>()?);
+            }
             result["trust_boundary"] = json!("retrieved_data");
             result["commit_token"] = json!(commit_token(db)?);
             Ok(result)

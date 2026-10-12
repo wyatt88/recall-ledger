@@ -212,6 +212,39 @@ class Client:
         """Read bounded task metadata and aggregate state counts."""
         return self.call("maintenance_status", {"limit": limit})
 
+    def evidence_sources(self, inputs: Sequence[str], *, max_chars: int = 16384) -> Any:
+        """Preview complete current source evidence, without creating a record.
+
+        This checks recorded provenance and full text retention, not source truth.
+        Exceeding the budget fails instead of truncating qualifications.
+        """
+        if isinstance(inputs, (str, bytes)):
+            raise ValueError("inputs must be a sequence of record IDs")
+        return self.call("evidence_sources", {"inputs": list(inputs), "max_chars": max_chars})
+
+    def consolidate(
+        self, inputs: Sequence[str], *, idempotency_key: str, max_chars: int = 16384,
+    ) -> Any:
+        """Queue source-exact consolidation and repair, requiring no model.
+
+        The returned receipt reserves an output ID. Inspect it after the daemon's
+        worker finishes; no generated interpretation is promoted as evidence.
+        """
+        if isinstance(inputs, (str, bytes)):
+            raise ValueError("inputs must be a sequence of record IDs")
+        return self.call("consolidate", {
+            "inputs": list(inputs), "max_chars": max_chars,
+            "idempotency_key": idempotency_key,
+        })
+
+    def evidence_inspect(self, record_id: str) -> Any:
+        """Audit a capsule against current sources and its local managed recipe.
+
+        Imported capsules do not inherit local verification or repair recipes.
+        A successful result is not semantic truth or authorization.
+        """
+        return self.call("evidence_inspect", {"id": record_id})
+
     def candidate_submit(
         self,
         body: str,
@@ -272,3 +305,49 @@ class Client:
     def validate_context(self, manifest: Dict[str, Any]) -> Any:
         """Validate cited revisions; cannot erase an existing host prompt."""
         return self.call("validate_context", {"manifest": manifest})
+
+    def prepare_handoff(self, task: Dict[str, Any], manifest: Dict[str, Any]) -> Any:
+        """Create a task-data package after checking its evidence on this ledger."""
+        from .handoff import prepare_handoff
+        return prepare_handoff(self, task, manifest)
+
+    def verify_handoff(self, packet: Dict[str, Any]) -> Any:
+        """Recheck a handoff's evidence; never authorize or replay the task."""
+        from .handoff import verify_handoff
+        return verify_handoff(self, packet)
+
+    def bundle_export(self) -> Any:
+        """Export a bounded portable bundle, preserving its source identity."""
+        return self.call("bundle_export", {})
+
+    def bundle_plan(self, bundle: Dict[str, Any], *, expected_source: Dict[str, str]) -> Any:
+        """Read-only preview; does not authorize or apply a portable import."""
+        return self.call("bundle_plan", {
+            "bundle": bundle, "expected_source": expected_source,
+        })
+
+    def bundle_apply(
+        self, bundle: Dict[str, Any], *, expected_source: Dict[str, str],
+        reviewed_digest: str, expected_target_commit: str, idempotency_key: str,
+    ) -> Any:
+        """Apply an explicitly reviewed plan with its target-CAS and retry key."""
+        return self.call("bundle_apply", {
+            "bundle": bundle, "expected_source": expected_source,
+            "reviewed_digest": reviewed_digest,
+            "expected_target_commit": expected_target_commit,
+            "idempotency_key": idempotency_key,
+        })
+
+    def bundle_context(
+        self, bundle: Dict[str, Any], *, expected_source: Dict[str, str],
+        manifest: Dict[str, Any],
+    ) -> Any:
+        """Read a target manifest only after checking applied source mappings."""
+        return self.call("bundle_context", {
+            "bundle": bundle, "expected_source": expected_source, "manifest": manifest,
+        })
+
+    def rebase_handoff(self, packet: Dict[str, Any], bundle: Dict[str, Any]) -> Any:
+        """Explicitly create a new target-bound handoff after reviewed migration."""
+        from .handoff import rebase_handoff
+        return rebase_handoff(self, packet, bundle)

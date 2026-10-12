@@ -8,6 +8,21 @@ agents hand work to each other, and background processing fails. The project
 has not established state-of-the-art performance. This roadmap describes the
 work and comparisons needed to earn a narrower, reproducible claim.
 
+**Product direction, 2026-10-11:** the user identified two primary outcomes:
+reducing long-term memory distortion and the resulting task deterioration, and
+preserving useful knowledge when moving between agent brands.
+The [product goals and acceptance design](product-goals.md) now make those
+independent gates. The historical priorities below support these goals; storage
+correctness, retrieval scores and adapter counts alone do not satisfy them.
+
+The next deliveries are a longitudinal behavior regression harness and a real
+two-host round trip, followed by semantic fidelity/applicability checks and
+portable native-memory import. Shared-ledger host switching, whole-database
+recovery and portable exchange have different guarantees.
+None has established lossless cross-brand behavior. Destination-host comparisons
+must hold its reader and tools fixed so model differences are not counted as
+migration loss.
+
 **v0.3 implementation update:** candidate intake and exact fact identity,
 `changes`, context manifests/validation, consistent backup/new-history restore,
 managed Markdown publication/read gates, and Claude Code project hooks are now
@@ -22,10 +37,24 @@ binding are implemented. See [v0.4 validation](VALIDATION-v0.4.md). Live host
 acceptance and Crew upstream wiring remain open; these adapters do not
 establish behavioral superiority over native memory.
 
+**Development update, 2026-10-11:** bounded portable namespace bundles,
+transactional import, source-specific conflict refusal, and task handoff with
+explicit cross-ledger evidence remapping are implemented after v0.4.0. See
+[migration](migration.md) and [long-term paper evidence](long-term-fidelity.md).
+The synthetic two-daemon workflow does not replace real-host acceptance or
+longitudinal semantic evaluation.
+
 **Original review status:** the v0.2 mechanisms were implemented; new interfaces
 below were proposals at the time of review. No new behavioral benchmark, host acceptance run, or performance
 experiment was executed for this document. A roadmap is not a frozen experimental
 protocol or a deployment commitment.
+
+**Development update, 2026-10-12:** the default worker now creates deterministic
+original-source capsules and repairs them without a model. The
+[strict source-preservation contract](fidelity.md) refuses incomplete provenance,
+partial text and insufficient budgets. A two-daemon engineering regression
+runner covers repeated correction, failed repair and migration. Semantic
+task regression, real-host acceptance and competitive effectiveness remain open.
 
 ## The technical thesis
 

@@ -1,6 +1,7 @@
 # RecallLedger
 
-用 Rust 编写、随 Agent 本地部署的记忆基础设施。
+用 Rust 编写、随 Agent 本地部署的记忆基础设施。项目有两个核心目标：
+减少长期记忆失真及其造成的任务表现退化；支持更换 Agent 品牌后继续使用已有知识与经验。
 
 RecallLedger 保存带版本的记录，并追踪每条派生记录使用过的输入。来源修改后，
 依赖它的旧结果停止提供读取；后台任务即使晚到，也必须重新核对输入版本才能发布。
@@ -8,14 +9,43 @@ RecallLedger 保存带版本的记录，并追踪每条派生记录使用过的�
 0.4 新增本地 ChatGPT／Codex hooks、KiroCrew Gateway bridge 和 OpenCode V1 插件。
 各适配器固定 namespace 与数据库历史身份，阻止 socket 换绑后把旧记忆队列写入新库。
 
+**v0.4.0 之后的开发内容：**当前源码分支已实现迁移包导出、冲突预演、事务导入，
+以及带证据版本核验的任务交接。[运行 A → B → A 完整示例](docs/migration.md)。
+这些新功能尚不包含在 v0.4.0 标签中。
+
+**2026-10-12 保真开发更新：**自动整理默认改为完整保留原文及结构化适用范围、
+限制条件的证据包，无需模型；来源变化后先撤下旧结果，再重建并逐字校验。容量不足明确拒绝，
+不会悄悄丢掉限定条件。自由生成摘要保留为显式选项，其含义仍未被系统认证。
+[使用与核验证据包](docs/fidelity.md)。该路径保留原文，不能保证原文本身正确，
+也没有证明所有 Agent 的长期任务表现不退化。
+
 [English](README.md) · [架构](docs/architecture.md) ·
 [接口契约](docs/CONTRACT.md) · [运行说明](docs/OPERATIONS.md) · [研究依据](docs/research.md) ·
+[产品目标与验收](docs/product-goals.md) ·
+[迁移与交接](docs/migration.md) · [原文保真与修复](docs/fidelity.md) · [长期保真的论文证据](docs/long-term-fidelity.md) ·
 [原生记忆接管设计](docs/native-memory.md) · [技术路线与验收](docs/roadmap.md) ·
 [Claude Code 接入](docs/claude-code.md) · [候选准入](docs/ingestion.md) · [备份恢复](docs/recovery.md) ·
 [本地 ChatGPT](docs/chatgpt.md) · [Codex](docs/codex.md) ·
 [KiroCrew](docs/kirocrew.md) · [OpenCode](docs/opencode.md) · [参与贡献](CONTRIBUTING.md)
 
 ## 解决什么问题
+
+Agent 长期运行后，可能在反复压缩中丢失关键条件，重复已经纠正的错误，
+或把旧推测当成当前事实。更换品牌时，用户又可能失去积累的偏好、项目决策与工作经验。
+RecallLedger 的目标是让这些知识成为由用户掌握、可供受支持 Agent 使用的本地长期资产。
+
+两项目标分别验收：
+
+| 目标 | 必须证明的结果 |
+| --- | --- |
+| 长期记忆可靠 | 多轮使用与压缩后，重要依据及适用条件仍保留；纠正过的错误不再反复出现；历史增长时有效任务表现保持在约定范围 |
+| 不同品牌间的连续性 | 新 Agent 能使用已有知识，在重新核对当前环境后继续任务；后续更新不丢作用域、不复活已撤回信息，并能被其他受支持 Agent 使用 |
+
+版本和依赖检查解决的是受管旧结果的失效，不能单独判断摘要是否曲解原意。
+多个适配器共用数据库，也不等于已经完成原生记忆的无损导入或任务迁移。
+[产品目标与验收](docs/product-goals.md)区分已经实现的迁移流程，以及仍需实现和验证的语义保真、
+各品牌原生格式映射与真实宿主流程。这里的“失智”指记忆链路造成的可测行为退化，
+不表示存储层能够提高模型本身的推理能力。
 
 Agent 记住“项目语言尚未决定”，后台开始生成摘要。随后，用户明确选择 Rust。
 只修改原记录并不够：旧摘要和仍在处理旧输入的任务，也需要失效。
@@ -100,6 +130,7 @@ Agent 记住“项目语言尚未决定”，后台开始生成摘要。随后�
 | 检索 | 字面词检索、exact cosine 向量检索、RRF 混合排序（k=60）、字符预算 |
 | 本地模型 | 显式配置 loopback embedding/chat endpoint、模型名和修订标识 |
 | 自动摘要 | 持久化 recipe、分组输入预算、固定来源版本后生成 |
+| 原文保真（v0.4 之后） | 完整原始来源、全部已知依赖屏障、发布时逐字核验；当前默认整理策略 |
 | 自动修复 | 撤下旧结果；带租约与版本核验的 worker 重建，保留 output_id |
 | 本地服务 | macOS/Linux Unix-domain socket，不监听 HTTP |
 | MCP | stdio 记录操作、摘要入队、维护任务状态 |
@@ -138,8 +169,11 @@ bash examples/workflow.sh
 也可以安装当前源码预览版：
 
 ```sh
-cargo install --git https://github.com/wyatt88/recall-ledger.git --tag v0.4.0 --locked
+cargo install --git https://github.com/wyatt88/recall-ledger.git --branch main --locked
 ```
+
+迁移和原文保真修复需要使用当前开发分支，`v0.4.0` 标签不含这些功能。
+开发包版本号尚未递增；替换已安装的 0.4.0 时，在上述命令中加上 `--force`。
 
 当前没有发布到 crates.io 或 PyPI，Python SDK 随源码提供。发布物为源码，
 由使用者在本机编译。需要复现安装版本时，选择已发布的 tag 或 commit。
@@ -187,13 +221,14 @@ Crew 需要可信 Gateway 接线；配置生成、hook 信任和真实会话验�
 `mode="vector"` 要求语义查询成功。hybrid 的模型调用失败时，会明确返回词法
 降级标记；检查 `coverage`，可以看到索引缺失和降级情况。
 
-worker 自动索引当前记录，并按来源、类型和分组预算整理未托管的根记录；一组
-达到四条时生成摘要。来源修订后，旧摘要立即不可读，再异步修复；新版本保留
+配置 embedding 后 worker 索引当前记录，并按来源、类型和分组预算整理未托管的根记录；
+一组达到四条时默认生成原文证据包，`--summary-policy model` 才自动生成模型摘要。
+来源修订后，旧受管结果立即不可读，再异步修复；新版本保留
 原 `output_id`。撤回来源或摘要会取消相应 recipe。手工 `prepare`/`publish`
 产生的派生结果仍会失效，但不会被自动重建。
 
-省略 `--models` 可按原方式运行。`--no-worker` 关闭后台维护；
-`--auto-summary-min 0` 只关闭自动分组，保留显式摘要任务与索引维护。
+省略 `--models` 可运行词法检索和无模型的原文保真修复。`--no-worker` 关闭后台维护；
+`--auto-summary-min 0` 只关闭自动分组，保留显式证据／摘要任务与已配置的索引维护。
 预算、重试、手动维护和模型兼容说明见[运行说明](docs/OPERATIONS.md)。
 
 namespace 由可信服务配置指定，调用参数不能覆盖它。MCP 宿主可使用以下配置，

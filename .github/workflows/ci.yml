@@ -51,6 +51,10 @@ jobs:
         run: PYTHONPATH=sdk/python RECALL_LEDGER_BIN="$PWD/target/debug/recall-ledger" python3 -m unittest discover -s sdk/python/tests -v
       - name: Test OpenCode protocol fixtures
         run: node --test integrations/opencode/tests/plugin.test.mjs
+      - name: Run portable migration and handoff workflow
+        run: PYTHONPATH=sdk/python RECALL_LEDGER_BIN="$PWD/target/debug/recall-ledger" python3 examples/migration_handoff.py
+      - name: Run source preservation and repair regressions
+        run: PYTHONPATH=sdk/python RECALL_LEDGER_BIN="$PWD/target/debug/recall-ledger" python3 examples/fidelity_regression.py
       - name: Build release binary
         run: cargo build --release --locked
       - name: Run synthetic workflow

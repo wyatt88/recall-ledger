@@ -13,16 +13,18 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use uuid::Uuid;
 
 mod changes;
+mod fidelity;
 mod ingestion;
 mod maintenance;
 pub mod models;
+mod portable;
 pub mod projection;
 mod recovery;
 pub mod runtime;
 mod vector;
 
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
-const SCHEMA: i64 = 3;
+const SCHEMA: i64 = 4;
 const MAX_BODY: usize = 65_536;
 const MAX_INPUTS: usize = 64;
 const MAX_ANCESTORS: usize = 10_000;
@@ -136,7 +138,7 @@ impl Store {
         connection.busy_timeout(Duration::from_secs(5))?;
         connection.execute_batch("PRAGMA foreign_keys=ON; PRAGMA synchronous=FULL;")?;
         let version: i64 = connection.query_row("PRAGMA user_version", [], |r| r.get(0))?;
-        if ![0, 1, 2, SCHEMA].contains(&version) {
+        if ![0, 1, 2, 3, SCHEMA].contains(&version) {
             return Err(Error::new(
                 "schema_mismatch",
                 "Unsupported database schema version.",
@@ -144,7 +146,7 @@ impl Store {
         }
         let tx = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
         let locked_version: i64 = tx.query_row("PRAGMA user_version", [], |r| r.get(0))?;
-        if ![0, 1, 2, SCHEMA].contains(&locked_version) {
+        if ![0, 1, 2, 3, SCHEMA].contains(&locked_version) {
             return Err(Error::new(
                 "schema_mismatch",
                 "Unsupported database schema version.",
@@ -214,6 +216,9 @@ impl Store {
         if locked_version < 3 {
             ingestion::schema(&tx)?;
             changes::schema(&tx)?;
+        }
+        if locked_version < 4 {
+            portable::schema(&tx)?;
         }
         tx.pragma_update(None, "user_version", SCHEMA)?;
         tx.commit()?;
@@ -292,7 +297,7 @@ impl Store {
             "embedding_retry" => &["model_key", "idempotency_key"],
             "embedding_status" => &["model_key"],
             "summary_create" => &["inputs", "processor", "max_chars", "idempotency_key"],
-            "maintenance_claim" => &["worker", "lease_seconds", "idempotency_key"],
+            "maintenance_claim" => &["worker", "lease_seconds", "processor", "idempotency_key"],
             "maintenance_job" => &["task_id", "lease_token"],
             "maintenance_complete" => &["task_id", "lease_token", "body", "idempotency_key"],
             "maintenance_fail" => &[
@@ -305,6 +310,8 @@ impl Store {
             "maintenance_retry" => &["task_id", "idempotency_key"],
             "maintenance_status" => &["limit"],
             _ => ingestion::allowed(method)
+                .or_else(|| portable::allowed(method))
+                .or_else(|| fidelity::allowed(method))
                 .ok_or_else(|| Error::new("method_not_found", "Unknown method."))?,
         };
         if args.keys().any(|k| !allowed.contains(&k.as_str())) {
@@ -325,7 +332,9 @@ impl Store {
                 | "maintenance_complete"
                 | "maintenance_fail"
                 | "maintenance_retry"
-        ) || ingestion::is_mutation(method);
+        ) || ingestion::is_mutation(method)
+            || portable::is_mutation(method)
+            || method == "evidence_create";
         let tx = self.connection.transaction_with_behavior(if mutation {
             TransactionBehavior::Immediate
         } else {
@@ -358,7 +367,10 @@ impl Store {
                 let mut receipt = mutate(&tx, namespace, method, &arguments, at)?;
                 // Empty queue polls have no side effect, and must not grow the
                 // durable receipt table on every background worker tick.
-                if method == "maintenance_claim" && receipt["claimed"] == false {
+                if method == "maintenance_claim"
+                    && receipt["claimed"] == false
+                    && receipt["state_changed"] != true
+                {
                     receipt["commit_token"] = json!(commit_token(&tx)?);
                     receipt["durable"] = json!(false);
                     tx.commit()?;
@@ -894,6 +906,8 @@ fn mutate(db: &Connection, ns: &str, method: &str, v: &Value, at: i64) -> Result
         | "maintenance_complete"
         | "maintenance_fail"
         | "maintenance_retry" => maintenance::mutate(db, ns, method, v, at),
+        "bundle_apply" => portable::mutate(db, ns, method, v, at),
+        "evidence_create" => fidelity::create(db, ns, v, at),
         _ => ingestion::mutate(db, ns, method, v, at),
     }
 }
@@ -914,6 +928,16 @@ fn readable(db: &Connection, ns: &str, at: i64) -> Result<Vec<Record>> {
     }
     Ok(records)
 }
+
+/// Fact scope and conditions live outside Record. Hydrate them in the same
+/// namespace and read transaction as the body so consumers cannot accidentally
+/// turn a conditional assertion into an unconditional one.
+fn record_value(db: &Connection, ns: &str, record: &Record) -> Result<Value> {
+    let mut value = json!(record);
+    value["fact_key"] = json!(ingestion::record_fact_key(db, ns, &record.id)?);
+    Ok(value)
+}
+
 fn read(db: &Connection, ns: &str, method: &str, v: &Value, at: i64) -> Result<Value> {
     match method {
         "binding" => binding(db, ns),
@@ -929,6 +953,7 @@ fn read(db: &Connection, ns: &str, method: &str, v: &Value, at: i64) -> Result<V
                 "hybrid_rrf":true,"model_calls":false,"managed_summaries":true,"repair_queue":true,
                 "lineage":true,"conditional_publish":true,"restore":true,
                 "candidate_admission":true,"exact_fact_identity":true,"change_feed":true,
+                "portable_bundle":true,"transactional_import":true,
                 "managed_projection":true,"physical_erasure":false}}),
             )
         }
@@ -947,7 +972,7 @@ fn read(db: &Connection, ns: &str, method: &str, v: &Value, at: i64) -> Result<V
             if !history {
                 require_valid(db, ns, &r, at)?;
             }
-            let mut result = json!(r);
+            let mut result = record_value(db, ns, &r)?;
             result["applicable_now"] = json!(valid(db, ns, &r, at)?);
             result["trust_boundary"] = json!("retrieved_data");
             result["dependencies"] = json!(dependencies(db, id)?
@@ -977,7 +1002,10 @@ fn read(db: &Connection, ns: &str, method: &str, v: &Value, at: i64) -> Result<V
                 ));
             }
             // Published jobs are also revalidated; historical receipts never grant body access.
-            let inputs = job_inputs(db, ns, id, at)?;
+            let inputs = job_inputs(db, ns, id, at)?
+                .iter()
+                .map(|record| record_value(db, ns, record))
+                .collect::<Result<Vec<_>>>()?;
             Ok(
                 json!({"job_id":id,"state":state,"processor":processor,"output_id":output,
                 "inputs":inputs,"trust_boundary":"retrieved_data","commit_token":commit_token(db)?}),
@@ -1013,6 +1041,10 @@ fn read(db: &Connection, ns: &str, method: &str, v: &Value, at: i64) -> Result<V
                     }
                 }
             }
+            let records = records
+                .iter()
+                .map(|record| record_value(db, ns, record))
+                .collect::<Result<Vec<_>>>()?;
             Ok(
                 json!({"schema_version":"recall-ledger.snapshot/1","namespace":ns,"records":records,
                 "edges":edges,"commit_token":commit_token(db)?,"restore_supported":false}),
@@ -1021,6 +1053,8 @@ fn read(db: &Connection, ns: &str, method: &str, v: &Value, at: i64) -> Result<V
         "plan" => plan(db, ns, v, at),
         "embedding_candidates" | "embedding_status" => vector::read(db, ns, method, v, at),
         "maintenance_job" | "maintenance_status" => maintenance::read(db, ns, method, v, at),
+        "bundle_export" | "bundle_plan" | "bundle_context" => portable::read(db, ns, method, v, at),
+        "evidence_sources" | "evidence_inspect" => fidelity::read(db, ns, method, v, at),
         _ => ingestion::read(db, ns, method, v, at),
     }
 }
@@ -1133,15 +1167,32 @@ fn recall(db: &Connection, ns: &str, v: &Value, at: i64) -> Result<Value> {
     });
     let mut items = Vec::new();
     let mut used = 0;
+    let mut body_chars = 0;
+    let mut fact_key_chars = 0;
     let mut deferred = 0;
     for (score, r) in candidates {
-        let chars = r.body.chars().count();
-        if items.len() == limit || used + chars > budget {
+        if items.len() == limit {
+            deferred += 1;
+            continue;
+        }
+        let mut item = record_value(db, ns, &r)?;
+        let content_chars = r.body.chars().count();
+        // Count the complete serialized qualifier object, including field
+        // names/escaping. Never drop or truncate a condition to make it fit.
+        // Explicit null denotes absent metadata and carries no qualifier cost.
+        let metadata_chars = if item["fact_key"].is_null() {
+            0
+        } else {
+            item["fact_key"].to_string().chars().count()
+        };
+        let chars = content_chars + metadata_chars;
+        if used + chars > budget {
             deferred += 1;
             continue;
         }
         used += chars;
-        let mut item = json!(r);
+        body_chars += content_chars;
+        fact_key_chars += metadata_chars;
         item["selection_score"] = json!(score);
         if let Some(cosine) = semantic.get(&r.id) {
             item["cosine_similarity"] = json!(cosine);
@@ -1157,7 +1208,9 @@ fn recall(db: &Connection, ns: &str, v: &Value, at: i64) -> Result<Value> {
     Ok(json!({"items":items,"commit_token":token,
         "manifest":{"schema_version":"recall-ledger.context/1","namespace":ns,
             "commit_token":token,"records":references},
-        "budget":{"max_chars":budget,"used_chars":used,"unit":"unicode_scalars","bodies_only":true},
+        "budget":{"max_chars":budget,"used_chars":used,"unit":"unicode_scalars","bodies_only":false,
+            "scope":"body_and_fact_key","body_chars":body_chars,"fact_key_chars":fact_key_chars,
+            "fact_key_accounting":"canonical_json_non_null"},
         "coverage":{"status":if deferred>0 {"budget_limited"} else {"complete_scan"},
         "deferred":deferred,"semantic_search":mode!="lexical","mode":mode,"model_key":key,
         "eligible_records":eligible,"indexed_records":indexed,

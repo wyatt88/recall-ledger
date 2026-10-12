@@ -1,8 +1,9 @@
 # Running local models and maintenance
 
-RecallLedger 0.4 is a source preview. Run your own OpenAI-compatible embedding
-and chat model servers first. The project neither downloads models nor starts a
-cloud service. A record-only deployment needs neither server.
+RecallLedger is a source preview. The post-v0.4 development worker defaults to
+[source-exact consolidation](fidelity.md), requiring no model server. For vector
+retrieval or explicit model summaries, run your own OpenAI-compatible embedding
+or chat model server. The project neither downloads models nor starts a cloud service.
 
 ## Configuration
 
@@ -59,9 +60,10 @@ and therefore requires indexing into that new space. Even timeout changes alter
 the key because the complete provider configuration is hashed.
 
 Summary recipes pin the complete summary configuration and prompt version.
-A mismatch produces `model_revision_mismatch`; it does not silently regenerate
-old recipes using a different model. Restore their original configuration before
-retrying, or create a new explicit recipe under the new configuration.
+An incompatible worker does not claim those tasks; status reports
+`matching_model_configuration_required`. It does not silently regenerate old
+recipes using a different model. Restore their original configuration, or
+create a new explicit recipe under the new configuration.
 
 ## Start the daemon
 
@@ -75,7 +77,7 @@ chmod 700 .local-state
   serve --socket .local-state/memory.sock
 ```
 
-The daemon runs a maintenance worker by default when models are configured.
+The daemon runs a maintenance worker by default, including without models.
 Each tick makes a bounded amount of progress and then waits before the next
 tick. The interval is a pause between ticks, not an inference deadline.
 
@@ -83,12 +85,15 @@ tick. The interval is a pause between ticks, not an inference deadline.
 | --- | ---: | --- |
 | `--worker-interval-ms` | 1000 | Pause between worker ticks |
 | `--no-worker` | false | Disable all background maintenance |
+| `--summary-policy` | `evidence` | Complete source preservation; `model` opts into automatic free-form summaries |
 | `--auto-summary-min` | 4 | Minimum eligible records per automatic group; 0 disables discovery |
 | `--summary-strategy` | `fixed` | `individual`, `fixed`, `topic`, or `volatility` |
 | `--max-group-chars` | 12000 | Automatic group input-character budget, 1–16000 |
-| `--max-summary-chars` | 2000 | Output-character budget, 1–16384 |
+| `--max-summary-chars` | 16384 / 2000 | Evidence / model default; evidence allows 1–65536, model 1–16384 |
 
-The default worker processes up to four embeddings and one summary per tick.
+The default worker processes up to four configured embeddings and one recipe per tick.
+Strict recipes have priority and never call a model. Existing model recipes
+still require their exactly matching configured processor.
 Automatic discovery is also bounded. Summary generation/repair precedes indexing
 so a freshly published result can be embedded in the same tick. Model calls run
 outside database transactions. Inference is sequential in this worker; it does
@@ -100,7 +105,7 @@ importance judgments. The default threshold does not prevent explicit recipes
 with fewer than four records. Source records remain stored after summarization.
 Inputs previously assigned to cancelled recipes remain excluded from automatic
 discovery, so retracting a managed summary does not silently recreate it on the
-next tick. If its source records are still active, a deliberate `summarize` call
+next tick. If its source records are still active, a deliberate `consolidate` or `summarize` call
 with a new idempotency key can create a new recipe and a new output ID.
 
 Clients cannot change model endpoints through request parameters. Start the MCP
@@ -135,6 +140,12 @@ print(memory.maintenance_status())  # Wait for this task to become succeeded.
 # Then: memory.inspect(queued["output_id"])
 print(memory.recall("implementation constraints", mode="hybrid"))
 ```
+
+The preceding example explicitly requests a model interpretation. For complete
+source preservation, use `memory.consolidate(..., max_chars=16384)` instead and
+audit the result with `memory.evidence_inspect(output_id)`. Default automatic
+discovery follows that strict policy. Both paths keep sources; only the strict
+path mechanically checks full source-text retention.
 
 `status` reports configured model keys and indexing counts. `embedding_status`
 reports indexing progress/failures for the configured key. Model status says

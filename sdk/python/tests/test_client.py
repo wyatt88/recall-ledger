@@ -267,6 +267,56 @@ class ClientTests(unittest.TestCase):
         self.serve(handler)
         self.assertFalse(self.client.validate_context(manifest)["valid"])
 
+    def test_bundle_export_is_read_only_and_uses_empty_parameters(self):
+        def handler(stream, request):
+            self.assertEqual(request["method"], "bundle_export")
+            self.assertEqual(request["params"], {})
+            stream.sendall(json.dumps({"id": request["id"], "result": {"format": "recall-ledger.portable/1"}}).encode() + b"\n")
+
+        self.serve(handler)
+        self.assertEqual(self.client.bundle_export()["format"], "recall-ledger.portable/1")
+
+    def test_bundle_plan_preserves_bundle_and_explicit_source_identity(self):
+        bundle = {"format": "recall-ledger.portable/1", "payload": {"records": []}, "digest": "fixture"}
+
+        def handler(stream, request):
+            self.assertEqual(request["method"], "bundle_plan")
+            self.assertEqual(request["params"], {"bundle": bundle, "expected_source": BINDING})
+            stream.sendall(json.dumps({"id": request["id"], "result": {"target_commit": "target:4", "reviewed_digest": "fixture"}}).encode() + b"\n")
+
+        self.serve(handler)
+        self.assertEqual(self.client.bundle_plan(bundle, expected_source=BINDING)["target_commit"], "target:4")
+
+    def test_bundle_apply_preserves_review_target_cas_and_retry_key(self):
+        bundle = {"format": "recall-ledger.portable/1", "payload": {}, "digest": "fixture"}
+
+        def handler(stream, request):
+            self.assertEqual(request["method"], "bundle_apply")
+            self.assertEqual(request["params"], {
+                "bundle": bundle, "expected_source": BINDING, "reviewed_digest": "reviewed",
+                "expected_target_commit": "target:4", "idempotency_key": "original-key",
+            })
+            stream.sendall(json.dumps({"id": request["id"], "result": {"applied": True}}).encode() + b"\n")
+
+        self.serve(handler)
+        result = self.client.bundle_apply(
+            bundle, expected_source=BINDING, reviewed_digest="reviewed",
+            expected_target_commit="target:4", idempotency_key="original-key",
+        )
+        self.assertTrue(result["applied"])
+
+    def test_bundle_context_preserves_original_manifest_and_source_binding(self):
+        bundle = {"format": "recall-ledger.portable/1", "payload": {}, "digest": "fixture"}
+        manifest = {"namespace": "fixture", "commit_token": "source:4", "records": [{"id": "source-id", "revision": 2}]}
+
+        def handler(stream, request):
+            self.assertEqual(request["method"], "bundle_context")
+            self.assertEqual(request["params"], {"bundle": bundle, "expected_source": BINDING, "manifest": manifest})
+            stream.sendall(json.dumps({"id": request["id"], "result": {"evidence_valid": True, "manifest": {"records": []}}}).encode() + b"\n")
+
+        self.serve(handler)
+        self.assertTrue(self.client.bundle_context(bundle, expected_source=BINDING, manifest=manifest)["evidence_valid"])
+
 
 if __name__ == "__main__":
     unittest.main()

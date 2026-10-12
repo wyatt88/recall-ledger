@@ -1,3 +1,4 @@
+mod bundle_cli;
 mod mcp;
 mod transport;
 
@@ -22,6 +23,11 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Command {
+    /// Export, review, and apply portable memory bundles locally.
+    Bundle {
+        #[command(subcommand)]
+        command: bundle_cli::Command,
+    },
     /// Read the fixed namespace and database history identity of a daemon.
     Binding {
         #[arg(long)]
@@ -70,7 +76,7 @@ enum Command {
         #[command(flatten)]
         summary: SummaryOptions,
     },
-    /// Run one bounded model maintenance batch directly; no daemon is required.
+    /// Run one bounded evidence/model maintenance batch; no daemon is required.
     Maintain {
         #[arg(long, default_value_t = 4, value_parser = clap::value_parser!(u64).range(0..=32))]
         max_embeddings: u64,
@@ -94,6 +100,9 @@ enum Command {
 
 #[derive(Args)]
 struct SummaryOptions {
+    /// Automatic consolidation policy. Evidence preserves complete source text.
+    #[arg(long, default_value = "evidence", value_parser = ["evidence", "model"])]
+    summary_policy: String,
     /// Minimum unassigned inputs before creating a summary recipe; 0 disables grouping.
     #[arg(long, default_value_t = 4, value_parser = clap::value_parser!(u64).range(0..=64))]
     auto_summary_min: u64,
@@ -101,17 +110,22 @@ struct SummaryOptions {
     summary_strategy: String,
     #[arg(long, default_value_t = 12_000, value_parser = clap::value_parser!(u64).range(1..=16_000))]
     max_group_chars: u64,
-    #[arg(long, default_value_t = 2000, value_parser = clap::value_parser!(u64).range(1..=16_384))]
-    max_summary_chars: u64,
+    /// Output budget; defaults to 16384 for evidence and 2000 for model summaries.
+    #[arg(long, value_parser = clap::value_parser!(u64).range(1..=65_536))]
+    max_summary_chars: Option<u64>,
 }
 
 impl SummaryOptions {
     fn params(&self, max_embeddings: u64, max_summaries: u64) -> Value {
-        json!({
+        let mut params = json!({
             "max_embeddings":max_embeddings,"max_summaries":max_summaries,
             "auto_summary_min":self.auto_summary_min,"strategy":self.summary_strategy,
-            "max_group_chars":self.max_group_chars,"max_summary_chars":self.max_summary_chars
-        })
+            "max_group_chars":self.max_group_chars,"summary_policy":self.summary_policy
+        });
+        if let Some(max_chars) = self.max_summary_chars {
+            params["max_summary_chars"] = json!(max_chars);
+        }
+        params
     }
 }
 
@@ -128,6 +142,10 @@ fn print_result(result: &Value) {
 
 fn run(cli: Cli) -> Result<(), recall_ledger::Error> {
     match cli.command {
+        Command::Bundle { command } => {
+            print_result(&bundle_cli::run(cli.db, &cli.namespace, command)?);
+            Ok(())
+        }
         Command::Binding { socket } => {
             print_result(&transport::request(&socket, "binding", json!({}))?);
             Ok(())
@@ -174,11 +192,7 @@ fn run(cli: Cli) -> Result<(), recall_ledger::Error> {
             summary,
         } => {
             let models = config(cli.models)?;
-            let worker = if !no_worker
-                && models
-                    .as_ref()
-                    .is_some_and(|c| c.embedding.is_some() || c.summary.is_some())
-            {
+            let worker = if !no_worker {
                 Some(transport::WorkerOptions {
                     interval_ms: worker_interval_ms,
                     params: summary.params(4, 1),

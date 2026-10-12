@@ -293,7 +293,10 @@ fn mcp_end_to_end_preserves_core_errors_and_has_clean_stdout() {
     );
     assert_eq!(responses[3]["error"]["code"], -32602);
     let tools = responses[4]["result"]["tools"].as_array().unwrap();
-    assert_eq!(tools.len(), 14);
+    assert_eq!(tools.len(), 17);
+    for name in ["consolidate", "evidence_sources", "evidence_inspect"] {
+        assert!(tools.iter().any(|tool| tool["name"] == name), "{name}");
+    }
     let recall = tools.iter().find(|tool| tool["name"] == "recall").unwrap();
     assert_eq!(
         recall["inputSchema"]["properties"]["mode"]["enum"],

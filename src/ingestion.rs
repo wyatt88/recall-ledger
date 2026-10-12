@@ -103,6 +103,22 @@ fn key_value(key: &str) -> Result<Value> {
     }))
 }
 
+// Fact identities are immutable for a record through the public mutation paths:
+// accepting the same key revises the body; a different key creates a new record.
+// Portable updates likewise reject metadata changes, including this key. Readers
+// must still fetch the binding in their snapshot instead of inferring it from
+// a record's body, kind, source label, or a candidate's proposed identity.
+pub(super) fn record_fact_key(db: &Connection, ns: &str, id: &str) -> Result<Option<Value>> {
+    let key: Option<String> = db
+        .query_row(
+            "SELECT fact_key FROM fact_bindings WHERE namespace=?1 AND record_id=?2",
+            params![ns, id],
+            |row| row.get(0),
+        )
+        .optional()?;
+    key.as_deref().map(key_value).transpose()
+}
+
 fn binding(db: &Connection, ns: &str, key: &str) -> Result<Option<String>> {
     Ok(db
         .query_row(

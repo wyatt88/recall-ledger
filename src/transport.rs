@@ -429,14 +429,15 @@ mod daemon {
         drop(runtime);
         let (listener, _socket_guard) =
             listener(socket).map_err(|err| failure("socket_error", err.to_string(), false))?;
-        if let (Some(worker), Some(worker_models)) = (worker, models.clone()) {
+        if let Some(worker) = worker {
+            let worker_models = models.clone();
             let worker_db = db.clone();
             let worker_namespace = namespace.to_owned();
             std::thread::Builder::new()
                 .name("recall-maintenance".into())
                 .spawn(move || loop {
                     let result = Store::open(&worker_db)
-                        .and_then(|store| Runtime::new(store, Some(worker_models.clone())))
+                        .and_then(|store| Runtime::new(store, worker_models.clone()))
                         .and_then(|mut runtime| {
                             runtime.execute(&worker_namespace, "maintain", worker.params.clone())
                         });

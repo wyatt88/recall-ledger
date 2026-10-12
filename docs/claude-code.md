@@ -227,10 +227,26 @@ intercept every later action in the same agent turn. A successful check does not
 lock the store against subsequent writes. Old conversation text remains in the
 host, and a missing retrieval hit alone is not proof of deletion.
 
-When restore changes the store history, a `commit_history_mismatch` causes one
-fresh recall without the old barrier and marks `history_reset` in the packet.
-It warns that older injected memory requires revalidation. There is no attempt
-to claim older host context was erased.
+Restoring a database changes its history identity. The installed adapter refuses
+that destination with `binding_mismatch`; it does not drop the old commit barrier,
+automatically rebind, or replay old queued proposals. Re-running `install` while
+the old installation is active retains its binding and does not bypass this check.
+
+For a planned switch in the same project, stop the old host's hooks and background
+writers, then run `recall-ledger-claude uninstall --project /absolute/project`
+while the original bound daemon is still available. Preserve the old database and
+privately archive `.claude/recall-ledger/` outside its active location, including
+its queue, import receipts and session metadata. Reconcile changes after the
+backup before making the restored database authoritative. Start its daemon at the
+intended socket, run the normal `install --project ... --socket ...` command, and
+start a new host session. Do not copy the old queue or session receipts into the
+new installation; unresolved proposals need explicit review.
+
+If the original bound daemon is unavailable, uninstall cannot prepare its verified
+fallback and stops before changing settings. The current CLI has no forced
+uninstall or `rebind` command; recovering the original service or reviewing a
+manual migration is separate work. Neither path erases already delivered host
+context.
 
 Host event IDs use the project, session, event kind and full-text hash, with a
 bounded transcript UUID hint when available. The first mapping is persisted

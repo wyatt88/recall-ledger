@@ -405,6 +405,10 @@ impl Store {
         let source_commit = commit_token(&output)?;
         let new_id = Uuid::new_v4().to_string();
         let tx = output.transaction_with_behavior(TransactionBehavior::Immediate)?;
+        // Reset transport history without inventing a new provenance identity
+        // for old native records. Otherwise an old restored snapshot could
+        // bypass tombstones already imported by another deployment.
+        portable::freeze_native_origins(&tx)?;
         tx.execute("UPDATE meta SET value=?1 WHERE key='store_id'", [&new_id])?;
         tx.execute("UPDATE meta SET value='0' WHERE key='sequence'", [])?;
         let cleared_receipts = tx.execute("DELETE FROM operations", [])?;

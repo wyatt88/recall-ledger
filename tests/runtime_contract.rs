@@ -299,6 +299,59 @@ fn configured_summary_repairs_same_output_and_retraction_stops_model_work() {
 }
 
 #[test]
+fn explicit_model_summary_receives_conditions_stored_only_in_fact_key() {
+    let (sent, received) = mpsc::channel();
+    let peer = Peer::new(move |request| {
+        sent.send(request).unwrap();
+        json!({"model":"fixture-summary","choices":[{"finish_reason":"stop",
+            "message":{"role":"assistant","content":"Synthetic unchecked interpretation."}}]})
+    });
+    let (_directory, mut runtime) = database(Some(peer.config(false, true)));
+    let key = json!({"entity":"deployment","attribute":"permission",
+        "scope":"test only, never production","conditions":"two signatures and no audit freeze"});
+    let candidate = call(
+        &mut runtime,
+        "candidate_submit",
+        json!({"body":"Deployment permitted.","event_id":"scoped-event",
+            "origin":"user_explicit","source":"synthetic-policy","fact_key":key,
+            "valid_from":1,"valid_until":i64::MAX,"idempotency_key":"scoped-proposal"}),
+    );
+    let admitted = call(
+        &mut runtime,
+        "candidate_resolve",
+        json!({"candidate_id":candidate["candidate_id"],"decision":"accept",
+            "idempotency_key":"scoped-admission"}),
+    );
+    let queued = call(
+        &mut runtime,
+        "summarize",
+        json!({"inputs":[admitted["record_id"]],"max_chars":200,
+            "idempotency_key":"scoped-model-recipe"}),
+    );
+    tick(&mut runtime);
+    let request = received.recv_timeout(Duration::from_secs(2)).unwrap();
+    let envelope: Value =
+        serde_json::from_str(request["messages"][1]["content"].as_str().unwrap()).unwrap();
+    let text: Value =
+        serde_json::from_str(envelope["records"][0]["text"].as_str().unwrap()).unwrap();
+    assert_eq!(text["body"], "Deployment permitted.");
+    assert_eq!(text["fact_key"], key);
+    assert_eq!(text["source"], "synthetic-policy");
+    assert_eq!(text["valid_until"], i64::MAX);
+    assert_eq!(envelope["type"], "untrusted_memory_records");
+    assert_eq!(peer.calls(), 1);
+    let audit = call(
+        &mut runtime,
+        "evidence_inspect",
+        json!({"id":queued["output_id"]}),
+    );
+    assert_eq!(
+        audit["verified"], false,
+        "Input retention is not semantic verification."
+    );
+}
+
+#[test]
 fn automatic_discovery_does_not_summarize_its_own_outputs_repeatedly() {
     let peer = Peer::new(reply);
     let (_directory, mut runtime) = database(Some(peer.config(false, true)));
@@ -311,7 +364,8 @@ fn automatic_discovery_does_not_summarize_its_own_outputs_repeatedly() {
     }
     let args = json!({
         "max_embeddings":0,"max_summaries":1,"auto_summary_min":4,
-        "strategy":"fixed","max_group_chars":12000,"max_summary_chars":2000
+        "strategy":"fixed","max_group_chars":12000,"max_summary_chars":2000,
+        "summary_policy":"model"
     });
     call(&mut runtime, "maintain", args.clone());
     assert_eq!(peer.calls(), 1);
@@ -345,7 +399,8 @@ fn withdrawn_automatic_recipe_is_not_reported_as_newly_queued() {
     }
     let args = json!({
         "max_embeddings":0,"max_summaries":1,"auto_summary_min":4,
-        "strategy":"fixed","max_group_chars":12000,"max_summary_chars":2000
+        "strategy":"fixed","max_group_chars":12000,"max_summary_chars":2000,
+        "summary_policy":"model"
     });
     call(&mut runtime, "maintain", args.clone());
     let snapshot = call(&mut runtime, "export", json!({}));
@@ -466,8 +521,8 @@ fn changing_summary_model_identity_does_not_recompute_an_old_recipe_silently() {
     config.summary.as_mut().unwrap().revision = "different-served-weights".into();
     let store = Store::open(directory.path().join("memory.sqlite3")).unwrap();
     let mut changed = Runtime::new(store, Some(config)).unwrap();
-    let _ = changed.execute(
-        NS,
+    let result = call(
+        &mut changed,
         "maintain",
         json!({"max_embeddings":0,"max_summaries":1,"auto_summary_min":0}),
     );
@@ -479,6 +534,49 @@ fn changing_summary_model_identity_does_not_recompute_an_old_recipe_silently() {
     assert!(changed
         .execute(NS, "inspect", json!({"id":recipe["output_id"]}))
         .is_err());
+    let task = &result["maintenance"]["tasks"][0];
+    assert_eq!(task["state"], "pending");
+    assert_eq!(task["claim_count"], 0);
+    assert_eq!(
+        task["waiting_reason"],
+        "matching_model_configuration_required"
+    );
+    assert_eq!(task["fidelity_contract"], "unchecked");
+}
+
+#[test]
+fn strict_and_matching_model_tasks_share_one_bounded_tick() {
+    let peer = Peer::new(reply);
+    let (_directory, mut runtime) = database(Some(peer.config(false, true)));
+    for index in 0..2 {
+        let source = remember(
+            &mut runtime,
+            &format!("legacy-source-{index}"),
+            &format!("Legacy source number {index}."),
+        );
+        call(
+            &mut runtime,
+            "summarize",
+            json!({"inputs":[source["id"]],"idempotency_key":format!("legacy-{index}")}),
+        );
+    }
+    let source = remember(&mut runtime, "strict-source", "Exact source stays whole.");
+    call(
+        &mut runtime,
+        "consolidate",
+        json!({"inputs":[source["id"]],"idempotency_key":"strict"}),
+    );
+    let result = call(
+        &mut runtime,
+        "maintain",
+        json!({"max_embeddings":0,"max_summaries":2,"auto_summary_min":0}),
+    );
+    assert_eq!(result["processed"], json!({"evidence":1,"model":1}));
+    assert_eq!(peer.calls(), 1, "only the remaining task budget may infer");
+    assert_eq!(result["actions"][0]["kind"], "evidence_published");
+    assert_eq!(result["actions"][1]["kind"], "summary_published");
+    assert_eq!(result["maintenance"]["counts"]["succeeded"], 2);
+    assert_eq!(result["maintenance"]["counts"]["pending"], 1);
 }
 
 #[test]
@@ -515,9 +613,16 @@ fn missing_providers_fail_explicitly_without_disabling_lexical_memory() {
             "summarize",
             json!({"inputs":[source["id"]],"idempotency_key":"summary"}),
         ),
-        ("maintain", json!({})),
     ] {
         let error = runtime.execute(NS, method, args).unwrap_err();
         assert_eq!(error.code, "model_not_configured");
     }
+    let maintained = call(&mut runtime, "maintain", json!({}));
+    assert_eq!(maintained["summary_policy"], "evidence");
+    assert_eq!(maintained["errors"], json!([]));
+    assert_eq!(maintained["status"]["capabilities"]["model_calls"], false);
+    assert_eq!(
+        maintained["status"]["capabilities"]["strict_evidence"],
+        true
+    );
 }

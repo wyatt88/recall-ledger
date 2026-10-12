@@ -396,6 +396,9 @@ class OpenCodeRealDaemonTests(unittest.TestCase):
         self.assertTrue(Path(asset["module"]).is_relative_to(environment))
         self.assertTrue(Path(asset["asset"]).is_relative_to(environment))
         self.assertTrue(asset["exists"])
+        handoff_help = run([str(environment / "bin" / "recall-ledger-handoff"), "--help"])
+        self.assertIn("rebase", handoff_help)
+        self.assertIn("verify", handoff_help)
 
         self.project = self.root / "wheel-only-project"
         self.project.mkdir()

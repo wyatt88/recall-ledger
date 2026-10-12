@@ -1,6 +1,8 @@
 # RecallLedger
 
-Local memory infrastructure for agents, written in Rust.
+Local memory infrastructure for agents, written in Rust. Its two product goals
+are to reduce long-term memory distortion and the resulting task failures, and
+to preserve useful knowledge when users move between agent brands.
 
 RecallLedger stores versioned records and tracks the inputs used to derive new
 records. When a source changes, its dependent results stop being readable. A
@@ -11,14 +13,48 @@ Version 0.4 adds local ChatGPT/Codex hooks, a KiroCrew Gateway bridge, and an
 OpenCode V1 plugin. Every adapter pins the intended namespace and database
 history, so a reused socket cannot silently redirect queued memory.
 
+**Development after v0.4.0:** portable namespace export, conflict preview,
+transactional import, and version-checked task handoffs are implemented in this
+source branch. [Run the A → B → A workflow](docs/migration.md). This code is not
+included in the v0.4.0 tag.
+
+**Source-preservation update, 2026-10-12:** automatic consolidation now defaults
+to complete original-source evidence capsules, preserving structured scope and
+conditions as well as text, with no model required. Revision
+changes withdraw them before deterministic repair; insufficient budgets refuse
+publication instead of silently dropping qualifications. Free-form summaries
+remain explicit, unchecked interpretations. [Use and audit the strict path](docs/fidelity.md).
+
 [中文说明](README.zh-CN.md) · [Architecture](docs/architecture.md) ·
 [API contract](docs/CONTRACT.md) · [Operations](docs/OPERATIONS.md) · [Research](docs/research.md) ·
+[Product goals and acceptance](docs/product-goals.md) ·
+[Migration and handoff](docs/migration.md) · [Source preservation](docs/fidelity.md) · [Long-term fidelity evidence](docs/long-term-fidelity.md) ·
 [Native memory integration](docs/native-memory.md) · [Roadmap](docs/roadmap.md) ·
 [Claude Code setup](docs/claude-code.md) · [Admission](docs/ingestion.md) · [Recovery](docs/recovery.md) ·
 [Local ChatGPT](docs/chatgpt.md) · [Codex](docs/codex.md) ·
 [KiroCrew](docs/kirocrew.md) · [OpenCode](docs/opencode.md) · [Contributing](CONTRIBUTING.md)
 
 ## Why this exists
+
+Long-running agents can lose important conditions during compression, repeat
+corrected mistakes, or treat an old inference as a current fact. Changing agent
+brands can then leave preferences, project decisions and useful experience behind.
+RecallLedger aims to make that knowledge a durable, user-controlled local resource
+that supported hosts can use.
+
+These goals have separate acceptance criteria:
+
+| Goal | What must be demonstrated |
+| --- | --- |
+| Reliable long-term memory | Evidence and its conditions survive repeated use and compression; corrections stop recurring in later tasks; useful task performance is preserved as history grows |
+| Continuity across agent brands | A destination agent can use prior knowledge, continue a task with a fresh check of its environment, and return updates without losing scope or reviving withdrawn information |
+
+Version and dependency checks address stale managed results. They do not by
+themselves detect a faithful-looking but false summary. Sharing a ledger between
+adapters also does not establish lossless native-memory import or task migration.
+The [product goals](docs/product-goals.md) separate the existing mechanisms from
+the implemented portable workflow and source-preservation checks from semantic checks, native-format mappings
+and real-host evaluations still needed.
 
 Suppose an agent remembers “the project language is undecided” and starts building
 a summary. You then choose Rust. Updating the original record is not enough:
@@ -104,7 +140,7 @@ edits, session refresh, and the limits of revoking copies.
 
 ## Current scope
 
-The 0.4 source preview targets one machine:
+The current source preview targets one machine:
 
 | Available surface | Behavior |
 | --- | --- |
@@ -115,6 +151,7 @@ The 0.4 source preview targets one machine:
 | Recall | Literal text search, exact cosine vectors, hybrid RRF (`k=60`), character budgets |
 | Local models | Explicit loopback embedding/chat endpoints; pinned model configurations |
 | Automatic summaries | Durable recipes, bounded source groups, captured input revisions |
+| Source preservation (post-v0.4) | Complete original-source capsules, guarded provenance, exact publication checks; default consolidation policy |
 | Automatic repair | Withdraw stale outputs; leased workers rebuild managed summaries with stable IDs |
 | Local daemon | Unix-domain socket on macOS/Linux; no HTTP listener |
 | MCP adapter | Record operations, summary enqueue, and maintenance status over stdio |
@@ -156,8 +193,12 @@ bash examples/workflow.sh
 Install the current source preview:
 
 ```sh
-cargo install --git https://github.com/wyatt88/recall-ledger.git --tag v0.4.0 --locked
+cargo install --git https://github.com/wyatt88/recall-ledger.git --branch main --locked
 ```
+
+Migration and source-preserving repair require this development branch; the
+`v0.4.0` tag predates them. Add `--force` when replacing an existing 0.4.0
+installation, since the development package version has not been bumped.
 
 The package has not been published to crates.io or PyPI. The Python SDK ships in
 this repository. Releases distribute source; build for your local platform.
@@ -218,16 +259,17 @@ without one, recall defaults to lexical search. `mode="vector"` requires semanti
 retrieval to succeed. If a hybrid query's model call fails, the result explicitly
 reports lexical degradation. Inspect `coverage` for missing vectors and fallback.
 
-The worker indexes current records, groups eligible unmanaged roots sharing
-source/kind boundaries, and generates summaries once a bounded group contains
-at least four records. Source revision withdraws a managed summary immediately,
+The worker indexes current records when configured, groups eligible unmanaged
+roots sharing source/kind boundaries, and creates source-preserving capsules once
+a bounded group contains at least four records. `--summary-policy model` opts
+into model-written summaries. Source revision withdraws a managed result immediately,
 then queues repair. The repaired record keeps its `output_id` and increments its
 revision. Retraction cancels affected recipes. Manual `prepare`/`publish` outputs
 are invalidated but are not automatically regenerated.
 
-Omit `--models` for lexical-only operation. Use `--no-worker` to disable background
+Omit `--models` for lexical retrieval and model-free evidence repair. Use `--no-worker` to disable background
 maintenance, or `--auto-summary-min 0` to disable automatic grouping while retaining
-explicit summary jobs and indexing. See [operations](docs/OPERATIONS.md) for
+explicit evidence/model recipes and configured indexing. See [operations](docs/OPERATIONS.md) for
 budgets, retries, provider compatibility, and manual maintenance.
 
 The namespace is selected by trusted transport configuration. Requests cannot

@@ -3,13 +3,64 @@
 This document describes the source preview. It does not establish production
 readiness, model grounding, or benchmark quality.
 The [v0.1 contract](IMPLEMENTATION-CONTRACT.md) is retained as a historical record.
+The current source branch adds the portable extension below after v0.4.0 and
+upgrades database schema 3 to 4 without changing the existing history identity.
+Use a backup before upgrading; older binaries cannot open schema 4.
+
+## Source-preservation extension (development)
+
+`consolidate` is the runtime alias for deterministic `evidence_create`.
+`evidence_sources` previews complete original sources and the recorded closure;
+`evidence_inspect` audits a local managed capsule against that current closure.
+Source objects retain `fact_key` as the full entity/attribute/scope/conditions
+object, or `null` when unbound. Ordinary inspect, recall and captured job reads
+preserve it too. Recall's character budget counts body and non-null fact-key JSON
+characters; it defers whole records instead of removing their qualifications.
+The fixed processor `recall-ledger.evidence/1` is checked inside the Store's
+publication transaction, including when invoked by a low-level worker.
+
+Automatic consolidation defaults to `summary_policy="evidence"`. Explicit
+`summarize` retains its model behavior; `summary_policy="model"` selects automatic
+model summaries. Existing model recipes are claimed only by an exactly matching
+processor, and unavailable processors remain pending. The daemon can maintain
+evidence recipes without model configuration.
+
+The [full source-preservation contract](fidelity.md) specifies budgets, graph
+guards, failure behavior and migration. Verification means exact source
+preservation, not semantic truth. Ordinary recall can still return legacy
+summaries; never infer strict verification from their source labels.
+
+## Portable extension (development)
+
+| Method | Parameters and behavior |
+| --- | --- |
+| `bundle_export` | Empty parameters; returns a bounded namespace-complete `recall-ledger.portable/1` envelope |
+| `bundle_plan` | `bundle`, `expected_source`; read-only digest, graph, state and synchronization checks; returns counts, conflicts, mappings, `reviewed_digest` and `target_commit` |
+| `bundle_apply` | `bundle`, `expected_source`, `reviewed_digest`, `expected_target_commit`, `idempotency_key`; rechecks and atomically applies the reviewed transfer |
+| `bundle_context` | `bundle`, `expected_source`, `manifest`; maps evidence only through the latest applied source snapshot and revalidates target content/state |
+
+Bundle limits are 512 KiB of compact UTF-8 JSON and 1,000 records plus candidates.
+Source bindings have the same exact namespace/history shape as destination
+bindings. Origins survive ID remapping; both the last imported state from this
+source and the incoming baseline constrain updates. A higher revision alone
+does not prove that independent branches can be merged.
+
+These are trusted administrative SDK/IPC/CLI methods; they are not automatically
+added to the model-facing MCP tool list. The existing diagnostic `export` keeps
+its earlier semantics. [`migration.md`](migration.md) defines exclusions,
+conflict behavior, file commands, current multi-hop limits and recovery.
+
+Python `handoff` implements `recall-ledger.handoff/1` (64 KiB): prepare,
+offline inspect, current evidence verification, and explicit cross-ledger
+rebase. It carries task prose and evidence references without granting tool
+permissions, validating artifact contents or resuming a live execution state.
 
 ## Store, runtime, and transports
 
 `Store::open(path)` opens SQLite; `Store::execute(namespace, method, params)`
 executes deterministic reads and transactions without model calls.
 `runtime::Runtime::new(store, Option<models::Config>)` wraps that store with
-configured model execution. Its `execute` method adds `summarize`, `maintain`,
+configured model execution. Its `execute` method adds `consolidate`, `summarize`, `maintain`,
 query embedding, model status, and convenience defaults.
 
 The CLI uses the configured runtime. The daemon pins one namespace and model
@@ -214,7 +265,7 @@ Low-level trusted worker operations are:
 | Method | Parameters |
 | --- | --- |
 | `summary_create` | `inputs`, `processor`, optional `max_chars`, `idempotency_key` |
-| `maintenance_claim` | `worker`, optional `lease_seconds` (1–3600), `idempotency_key` |
+| `maintenance_claim` | `worker`, optional `lease_seconds` (1–3600), optional exact `processor`, `idempotency_key` |
 | `maintenance_job` | `task_id`, `lease_token`; return only still-valid captured inputs |
 | `maintenance_complete` | `task_id`, `lease_token`, `body`, `idempotency_key` |
 | `maintenance_fail` | `task_id`, `lease_token`, `error_code`, `retryable`, `idempotency_key` |
@@ -233,7 +284,7 @@ publishing a result; use smaller groups when input limits are reached.
 Response model, vector shape, finish status, and output length are
 validated. This is protocol validation, not a proof of factual correctness.
 
-Schema 1/2 databases migrate transactionally to schema 3 on open. Unknown schema
-versions are refused. Older binaries cannot open schema 3. Manual file cloning,
+Schema 1/2/3 databases migrate transactionally to schema 4 on open. Unknown schema
+versions are refused. Older binaries cannot open schema 4. Manual file cloning,
 secure physical erasure, ANN scalability, repository-state verification, and
 hidden model/tool provenance are outside this contract.
