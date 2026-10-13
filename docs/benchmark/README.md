@@ -1,0 +1,40 @@
+# RecallLedger Memory Benchmark v0.1 设计包
+
+日期：2026-10-13，Asia/Shanghai。项目内名称，不宣称已形成公共标准。
+
+**2026-10-14 GitHub 发布说明：**本目录发布设计规格与公开开发样例，并补充[测试环境方案](ENVIRONMENT.md)。没有发布 Benchmark 成绩或可运行的 Benchmark runner。背景审阅记录保留其原始日期和证据边界；本目录规格与统计合同是后续实现入口。
+
+**交付状态：设计规格；实验未运行，正式协议未冻结。** 目标是公平比较 Agent Native Memory、强原文检索/生命周期基线与 RecallLedger 在实际任务、长期变化、迁移和成本上的差异。规格沿用[已审阅比较原则](background/PROTOCOL.md)，此处进一步定义实现接口、输入样例、配置与判定。
+
+| 文件 | 用途 |
+| --- | --- |
+| [SPEC.md](SPEC.md) | Suite、对照、数据、负载、执行阶段和实现顺序 |
+| [ENVIRONMENT.md](ENVIRONMENT.md) | 本机 Sandbox、真实 App Worker 与可选 EKS 的构建边界 |
+| [protocol.draft.json](protocol.draft.json) | 机器可读候选配置、预算上限及未满足的运行门槛 |
+| [INTERFACES.md](INTERFACES.md) | replay、backend/Host driver、trace、cost、verifier 与报告的接口合同 |
+| [TASKS.md](TASKS.md) | 八类任务的具体刺激、正确行为与反例 |
+| [examples/README.md](examples/README.md) | 三个开发 history cluster、六条分支；公开事件和示意 gold |
+| [SCORING.md](SCORING.md) / [analysis-plan.json](analysis-plan.json) | 指标、分母、统计、候选 margin 及通过/失败/不确定规则 |
+| [REVIEW.md](REVIEW.md) | 反方审查及处理记录 |
+| [原始结构检查](DESIGN-CHECK-2026-10-13.json) | 2026-10-13 原始工作区检查记录；其中哈希不用于校验调整后的发布版 |
+| [PUBLICATION-CHECK.json](PUBLICATION-CHECK.json) | 当前发布文件的结构检查与哈希；不包含 Agent 效果或 Sandbox 验收 |
+
+## 建议的首个决策
+
+先实现受控比较 runner 与强 baseline，同时补齐 RecallLedger 的 raw conversation → extraction/admission 路径。真实 Host 必须通过资格检查，才能进入 Native 对照。一个自写 MD backend 的结果不能标成某品牌 Native。
+
+正式主要对照分别是：
+
+- Controlled：`C_RL_EVIDENCE` 对 `C_LIFECYCLE`。
+- Real Host：`H_RL_INTEGRATED` 对同 Host 的 `H_NATIVE_TUNED`。
+- Migration：同一 A→B，对比两套实际迁移流程及各自的 B continuous。
+
+第一个模型 pilot 采用双方相同的 `admitted_events`，为候选 8 个开发 cluster × 2 个 counterfactual 分支 × 4 配置 × 2 生命周期 × 4 checkpoints，即 **512 task slots**。它不含全部 background/model calls，也不是 512 个独立样本。正式 sample size 留空，按开发方差和 power 冻结；pilot 数据尚未构造，执行预算尚未落实。
+
+## 2026-10-13 设计阶段边界
+
+本轮只允许文稿、接口设计和小型本地结构检查；模型/API/GPU 调用预算为 0。没有运行被测 Agent、修改用户 Memory 或 Host 配置、提交产品代码、创建服务或发布结果。
+
+示例 gold 与公开事件目前放在同一资料包中，**没有物理隔离**，只供实现和人工审阅。正式验证必须使用新封存历史，并通过真实访问控制隔离评分器。
+
+负责人：沈知远；任务与 Host 设计：程知行；统计：方衡之；反方审阅：魏慎言，均为 AI 岗位。方案效用为 H0；历史实现边界沿用 E2 代码审阅，不冒称 E3 论文复现或 E4 场景验收。

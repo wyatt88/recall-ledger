@@ -22,6 +22,7 @@ RecallLedger 保存带版本的记录，并追踪每条派生记录使用过的�
 [English](README.md) · [架构](docs/architecture.md) ·
 [接口契约](docs/CONTRACT.md) · [运行说明](docs/OPERATIONS.md) · [研究依据](docs/research.md) ·
 [产品目标与验收](docs/product-goals.md) ·
+[Benchmark 设计](docs/benchmark/README.md) · [测试环境方案](docs/benchmark/ENVIRONMENT.md) ·
 [迁移与交接](docs/migration.md) · [原文保真与修复](docs/fidelity.md) · [长期保真的论文证据](docs/long-term-fidelity.md) ·
 [原生记忆接管设计](docs/native-memory.md) · [技术路线与验收](docs/roadmap.md) ·
 [Claude Code 接入](docs/claude-code.md) · [候选准入](docs/ingestion.md) · [备份恢复](docs/recovery.md) ·

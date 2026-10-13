@@ -28,6 +28,7 @@ remain explicit, unchecked interpretations. [Use and audit the strict path](docs
 [中文说明](README.zh-CN.md) · [Architecture](docs/architecture.md) ·
 [API contract](docs/CONTRACT.md) · [Operations](docs/OPERATIONS.md) · [Research](docs/research.md) ·
 [Product goals and acceptance](docs/product-goals.md) ·
+[Benchmark design](docs/benchmark/README.md) · [Test environments](docs/benchmark/ENVIRONMENT.md) ·
 [Migration and handoff](docs/migration.md) · [Source preservation](docs/fidelity.md) · [Long-term fidelity evidence](docs/long-term-fidelity.md) ·
 [Native memory integration](docs/native-memory.md) · [Roadmap](docs/roadmap.md) ·
 [Claude Code setup](docs/claude-code.md) · [Admission](docs/ingestion.md) · [Recovery](docs/recovery.md) ·

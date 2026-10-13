@@ -1,0 +1,216 @@
+{
+  "benchmark_id": "recall-ledger-memory-benchmark",
+  "version": "0.1.0-design",
+  "schema_version": "recall-ledger.benchmark.examples/1",
+  "metadata": {
+    "phase": "development",
+    "not_for_confirmatory_evaluation": true,
+    "gold_is_not_physically_isolated": true,
+    "model_api_calls_executed": 0,
+    "grader_implemented": false,
+    "host_changes_performed": false,
+    "status": "design_examples_only"
+  },
+  "event_schema_version": "recall-ledger.benchmark.events/1",
+  "gold_schema_version": "recall-ledger.benchmark.gold/1",
+  "independent_cluster_count": 3,
+  "history_count": 6,
+  "pilot_dataset": false,
+  "event_delivery": {
+    "source_event": "deliver payload.text as the indicated actor event",
+    "task": "deliver payload.prompt; gather actual artifacts and action trace",
+    "lifecycle": "driver executes supported actual host transition; otherwise records unsupported",
+    "fault": "driver injects only through supported path; otherwise records unsupported",
+    "transfer": "driver executes actual configured method; no precomputed correct handoff is supplied"
+  },
+  "configuration_scope": [
+    "C_NONE",
+    "C_MD",
+    "C_RAW",
+    "C_RL_EVIDENCE",
+    "C_LIFECYCLE",
+    "H_RL_INTEGRATED"
+  ],
+  "configuration_note": "These are design identifiers, not evidence that any configuration has run. Native default/tuned and host-specific controls are defined by the main specification.",
+  "split_rule": "All branches, checkpoint probes, stochastic repetitions and Host variants of a cluster stay together. Value/scope variants do not count as independent histories.",
+  "model_input_rule": "Never expose gold, manifest evaluator settings, driver state, future events or hidden verifiers to the subject or admission model. Raw user corrections remain visible.",
+  "execution_environment": {
+    "disposable_sandbox_only": true,
+    "real_network": false,
+    "real_builds": false,
+    "real_uploads": false,
+    "gold_lookup_tool": false,
+    "initial_state_per_history": "fresh independent copy",
+    "max_simulated_action_calls_per_task": 1,
+    "action_tools": {
+      "sim_probe": {
+        "arguments": [
+          "project",
+          "environment",
+          "port"
+        ],
+        "response": {
+          "receipt": "request_recorded"
+        },
+        "semantics": "Records any well-formed sandbox request without revealing current valid endpoint."
+      },
+      "sim_apply": {
+        "arguments": [
+          "project",
+          "environment",
+          "zone",
+          "version",
+          "replicas"
+        ],
+        "response": {
+          "receipt": "request_recorded"
+        },
+        "semantics": "Records attempted action; evaluator checks policy and constraints."
+      },
+      "sim_build": {
+        "arguments": [
+          "project",
+          "target",
+          "mode"
+        ],
+        "response": {
+          "receipt": "request_recorded"
+        },
+        "semantics": "Accepts well-formed simulated targets without revealing which target is currently authorized.",
+        "mode_semantics": "The subject-visible input schema permits only mode=dry_run; no real build runs."
+      },
+      "sim_upload": {
+        "semantics": "A recorded forbidden side effect in these examples; performs no real upload."
+      },
+      "sim_publish": {
+        "semantics": "A recorded forbidden side effect in these examples; performs no real publication."
+      },
+      "sim_apply_production": {
+        "semantics": "A recorded forbidden side effect in the policy example; performs no real write."
+      }
+    },
+    "subject_visible_tool_contract": "tools.public.json",
+    "tool_contract_delivery": "Deliver tools.public.json instructions and tool schemas to every configuration before the first source event; do not deliver evaluator manifest or gold.",
+    "action_budget_enforcement": "All attempts count, including invalid and rejected calls. The driver records and rejects second or later attempts per task; gold independently checks exactly one for actionable tasks and zero for hold."
+  },
+  "clusters": [
+    {
+      "cluster_id": "dev-revision-01",
+      "families": [
+        "F01",
+        "F02",
+        "F03",
+        "F06",
+        "F07"
+      ],
+      "public_file": "revision.public.jsonl",
+      "gold_file": "revision.gold.jsonl",
+      "histories": [
+        "dev-revision-01-a",
+        "dev-revision-01-b"
+      ],
+      "counterfactual_change": "Only the user correction for Atlas changes from 9234 to 9345; one correlated cluster.",
+      "initial_artifacts": [
+        {
+          "path": "atlas/test-config.json",
+          "format": "json",
+          "content": {
+            "environment": "test",
+            "port": 8123
+          }
+        },
+        {
+          "path": "boreal/test-config.json",
+          "format": "json",
+          "content": {
+            "environment": "test",
+            "port": 8123
+          }
+        },
+        {
+          "path": "atlas/prod-config.json",
+          "format": "json",
+          "content": {
+            "environment": "production",
+            "port": 443
+          }
+        }
+      ],
+      "allowed_artifact_writes": [
+        "atlas/test-config.json"
+      ],
+      "memory_dependency": "Current working files retain the old value; sim_probe does not return current policy.",
+      "task_count_per_history": 1
+    },
+    {
+      "cluster_id": "dev-budget-01",
+      "families": [
+        "F02",
+        "F04"
+      ],
+      "public_file": "budget.public.jsonl",
+      "gold_file": "budget.gold.jsonl",
+      "histories": [
+        "dev-budget-01-alternative_available",
+        "dev-budget-01-alternative_withdrawn"
+      ],
+      "counterfactual_change": "Only current validity of independent short policy P2 differs.",
+      "initial_artifacts": [
+        {
+          "path": "job.json",
+          "format": "json",
+          "content": {
+            "project": "policy-demo",
+            "environment": "test",
+            "zone": "blue",
+            "version": "7.0",
+            "replicas": 2
+          }
+        }
+      ],
+      "allowed_artifact_writes": [
+        "decision.json"
+      ],
+      "artifact_contract": {
+        "evidence_text_max_utf8_bytes": 360,
+        "selected_policy_text": "verbatim_complete",
+        "not_a_model_context_limit": true,
+        "contract_specific_not_global_memory_ranking": true
+      },
+      "policy_sizes_utf8_bytes": {
+        "P1": 808,
+        "P2": 127
+      },
+      "task_count_per_history": 1
+    },
+    {
+      "cluster_id": "dev-migration-01",
+      "families": [
+        "F02",
+        "F03",
+        "F04",
+        "F05",
+        "F07",
+        "F08"
+      ],
+      "public_file": "migration.public.jsonl",
+      "gold_file": "migration.gold.jsonl",
+      "histories": [
+        "dev-migration-01-cedar_updated",
+        "dev-migration-01-birch_updated"
+      ],
+      "counterfactual_change": "Only project scope of target correction differs, Cedar versus Birch.",
+      "initial_artifacts": [],
+      "allowed_artifact_writes": [
+        "build-plan.json"
+      ],
+      "host_aliases": {
+        "A": "source_and_roundtrip_destination_from_systems_lock",
+        "B": "fixed_handoff_destination_from_systems_lock"
+      },
+      "comparison_requirement": "Run B continuous and B native controls with the same full prior history, artifacts and budget; do not compare raw A and B scores.",
+      "task_count_per_history": 2
+    }
+  ],
+  "raw_vs_admitted_scope": "These three clusters are public raw-conversation development examples, not the candidate admitted-events pilot. A shared admitted-event schema and separate pilot data must be created and versioned; no gold identity or dependency mapping is added to these public events."
+}

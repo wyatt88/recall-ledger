@@ -1,0 +1,819 @@
+{
+  "schema": "recall-ledger.benchmark.analysis-plan/0.1",
+  "created_at": "2026-10-13",
+  "timezone": "Asia/Shanghai",
+  "status": "draft_unfrozen",
+  "evidence_status": "H0",
+  "executed": false,
+  "author_role": "evaluation_and_reproducibility",
+  "execution_authorization": {
+    "scope": "design_artifacts_only",
+    "model_calls": 0,
+    "api_calls": 0,
+    "gpu_jobs": 0,
+    "formal_run_authorized": false
+  },
+  "pilot": {
+    "purpose": [
+      "qualification",
+      "runner_and_scorer_validation",
+      "cost_accounting_validation",
+      "exploratory_variance_calibration"
+    ],
+    "history_clusters": 8,
+    "counterfactual_branches_per_cluster": 2,
+    "configs": [
+      "C_NONE",
+      "C_MD",
+      "C_RAW",
+      "C_RL_EVIDENCE"
+    ],
+    "lifecycles": [
+      "hot",
+      "fresh"
+    ],
+    "checkpoints_per_history": 4,
+    "tasks_per_cell": 1,
+    "repeats_per_cell": 1,
+    "task_slots": 512,
+    "task_slots_per_config": 128,
+    "maximum_independent_history_clusters": 8,
+    "task_slots_are_model_call_count": false,
+    "task_slots_are_independent_samples": false,
+    "formal_claims_allowed": false,
+    "superiority_decision": "not_evaluated",
+    "power_claim": null,
+    "observed_results": null,
+    "stage": "P2",
+    "input_mode": "admitted_events",
+    "shared_admitted_fields": [
+      "identity",
+      "correction_mapping",
+      "explicit_dependencies",
+      "qualified_current_source"
+    ],
+    "raw_conversation_admission_evaluated": false,
+    "raw_conversation_mode_requires_separate_admission_qualification": true,
+    "public_raw_samples_are_complete_pilot_data": false,
+    "admitted_event_dataset_manifest_hash": null,
+    "measured_system_calls_ledger": "system_runtime"
+  },
+  "formal": {
+    "sample_size": null,
+    "sample_size_unit": "independent_history_cluster",
+    "total_task_slots": null,
+    "repeats": null,
+    "held_out_manifest_hash": null,
+    "qualification_record_hash": null,
+    "scorer_version": null,
+    "gold_isolation_audit_hash": null,
+    "independent_review_hash": null,
+    "execution_budget": null,
+    "task_deadline_seconds": null,
+    "recovery_horizon_seconds": null,
+    "stopping_rule": null,
+    "primary_endpoint": "answerable_valid_success_at_final_scheduled_checkpoint",
+    "primary_estimand": "equal_weight_independent_history_mean_of_paired_differences",
+    "primary_contrasts": [
+      {
+        "id": "controlled_mechanism",
+        "experimental": "C_RL_EVIDENCE",
+        "comparator": "C_LIFECYCLE",
+        "difference_order": "experimental_minus_comparator",
+        "requires": [
+          "same_admitted_event_stream",
+          "same_eligible_original_sources",
+          "same_qualifiers_revision_targets_and_recorded_dependencies",
+          "same_reader_tools_and_budget",
+          "qualified_current_source_rebuild_baseline"
+        ],
+        "input_mode": "admitted_events"
+      },
+      {
+        "id": "real_host_integrated",
+        "experimental": "H_RL_INTEGRATED",
+        "comparator": "H_NATIVE_TUNED",
+        "difference_order": "experimental_minus_comparator",
+        "requires": [
+          "same_host_version_model_and_raw_history",
+          "autonomous_admission_qualified",
+          "declared_long_term_fact_ownership",
+          "declared_write_read_and_refresh_policy",
+          "native_best_practice_baseline_qualified"
+        ],
+        "input_mode": "raw_conversation"
+      }
+    ],
+    "optional_separate_contrasts": [
+      {
+        "id": "real_host_additive",
+        "experimental": "H_NATIVE_PLUS_RL",
+        "comparator": "H_NATIVE_TUNED",
+        "claim_scope": "incremental_value_only",
+        "must_not_substitute_for": "real_host_integrated",
+        "include_in_family_before_freeze": true
+      }
+    ],
+    "multiplicity": {
+      "family_id": "frozen_primary_configuration_contrasts",
+      "family_wise_alpha": 0.05,
+      "method": "bonferroni_simultaneous_two_sided_intervals",
+      "family_size": null,
+      "per_contrast_confidence_expression": "1 - 0.05 / family_size",
+      "secondary_intervals_confidence": 0.95,
+      "secondary_intervals_are_exploratory": true,
+      "promote_secondary_only_before_freeze": true
+    }
+  },
+  "unit_and_pairing": {
+    "slot_key": [
+      "cluster_id",
+      "history_id",
+      "counterfactual_branch",
+      "system_id",
+      "lifecycle_profile",
+      "checkpoint_id",
+      "task_event_id",
+      "replicate"
+    ],
+    "independent_unit": "cluster_id",
+    "nested_units": [
+      "history_id",
+      "counterfactual_branch",
+      "lifecycle_profile",
+      "checkpoint_id",
+      "task_event_id",
+      "replicate"
+    ],
+    "controlled_history_includes_assistant_events": true,
+    "eligibility_determined_by": "hidden_common_event_truth_and_frozen_task_manifest",
+    "eligibility_may_depend_on_retrieval_success": false,
+    "eligibility_must_match_across_primary_pair": true,
+    "probe_feedback_may_enter_future_memory": false,
+    "counterfactual_branches_may_share_mutable_memory": false,
+    "configs_may_share_mutable_memory_or_cached_model_outputs": false,
+    "task_event_id_references": "public_event.event_id",
+    "legacy_field_mapping": {
+      "history_cluster_id": "cluster_id",
+      "branch_id": "counterfactual_branch",
+      "config_id": "system_id",
+      "lifecycle": "lifecycle_profile",
+      "task_id": "task_event_id",
+      "repeat_id": "replicate",
+      "cost_entry_id": "cost_event_id"
+    }
+  },
+  "outcome_policy": {
+    "terminal_state_enum": [
+      "completed",
+      "failed",
+      "budget_exhausted",
+      "infra_invalid",
+      "unsupported",
+      "not_run"
+    ],
+    "failure_reason_examples": [
+      "timeout",
+      "system_error",
+      "task_budget_exhausted",
+      "global_budget_exhausted",
+      "unsupported_declared_capability"
+    ],
+    "response_kind_enum": [
+      "refusal",
+      "substantive",
+      "clarification",
+      "none"
+    ],
+    "observation_status_enum": [
+      "complete",
+      "partial",
+      "unknown"
+    ],
+    "completed": "independent_score_zero_or_one",
+    "failed": "attempted_eligible_task_zero_success_keep_denominator_and_all_cost",
+    "task_timeout": {
+      "terminal_state": "failed",
+      "failure_reason": "timeout",
+      "success": 0,
+      "keep_denominator": true
+    },
+    "system_error": {
+      "terminal_state": "failed",
+      "failure_reason": "system_error",
+      "success": 0,
+      "keep_denominator": true
+    },
+    "task_cap_exhaustion": {
+      "terminal_state": "failed",
+      "failure_reason": "task_budget_exhausted",
+      "success": 0,
+      "keep_denominator": true
+    },
+    "refusal": {
+      "terminal_state": "completed",
+      "response_kind": "refusal",
+      "answerable_success": 0,
+      "unanswerable_scoring": "frozen_correct_response_requirements"
+    },
+    "unsupported_before_qualification": {
+      "terminal_state": "unsupported",
+      "policy": "capability_gap_exclude_only_from_predeclared_common_applicability_set"
+    },
+    "unsupported_after_declared_support": {
+      "terminal_state": "failed",
+      "failure_reason": "unsupported_declared_capability",
+      "success": 0,
+      "keep_raw_backend_error": true
+    },
+    "unqualified_primary_comparator": "not_evaluable",
+    "observation_unknown": {
+      "observation_status": "unknown",
+      "changes_terminal_state": false,
+      "diagnostic_value": null,
+      "task_scoring": "retain_independent_artifact_or_action_score_if_observable"
+    },
+    "missing_required_task_output": "zero_success_after_task_deadline_unless_infra_invalid_or_global_budget_interruption",
+    "infra_invalid": {
+      "requires_blind_independent_adjudication": true,
+      "invalidate_entire_matched_cell": true,
+      "rerun_all_systems_from_same_clean_checkpoint": true,
+      "retain_original_attempts_and_costs": true,
+      "system_task_resource_exhaustion_is_infra_invalid": false
+    },
+    "global_budget_stop": {
+      "interrupted_slot_terminal_state": "budget_exhausted",
+      "interrupted_slot_failure_reason": "global_budget_exhausted",
+      "interrupted_slot_success": null,
+      "remaining_slot_terminal_state": "not_run",
+      "remaining_slot_success": null,
+      "impute_missing_as_zero": false,
+      "full_matrix_primary_effect": null,
+      "full_matrix_primary_ci": null,
+      "formal_comparison_state": "inconclusive",
+      "partial_results": "descriptive_only_labelled_incomplete",
+      "must_report": [
+        "planned_count",
+        "started_count",
+        "completed_count",
+        "failed_count",
+        "budget_exhausted_count",
+        "not_run_count",
+        "stop_location",
+        "actual_cost_incurred"
+      ]
+    },
+    "not_run": {
+      "success": null,
+      "latency": null,
+      "assume_zero_cost_or_zero_success": false
+    },
+    "internal_retries": {
+      "new_slot": false,
+      "best_of_selection_allowed": false,
+      "included_in_deadline": true,
+      "included_in_cost": true
+    },
+    "legacy_status_mapping": {
+      "timeout": {
+        "terminal_state": "failed",
+        "failure_reason": "timeout"
+      },
+      "system_error": {
+        "terminal_state": "failed",
+        "failure_reason": "system_error"
+      },
+      "refused": {
+        "terminal_state": "completed",
+        "response_kind": "refusal"
+      },
+      "observation_unknown": {
+        "observation_status": "unknown",
+        "preserve_terminal_state": true
+      },
+      "invalid_external": {
+        "terminal_state": "infra_invalid"
+      }
+    }
+  },
+  "metrics": [
+    {
+      "id": "answerable_valid_success",
+      "role": "primary",
+      "numerator": "answerable_tasks_correctly_completed_within_deadline_and_without_version_withdrawal_scope_or_condition_violation",
+      "denominator": "all_eligible_answerable_tasks",
+      "zero_denominator": null,
+      "higher_is_better": true,
+      "includes_timeouts_and_failures": true
+    },
+    {
+      "id": "unanswerable_correct_abstention",
+      "role": "separate_secondary_guardrail",
+      "numerator": "unanswerable_tasks_meeting_gold_abstention_or_clarification_without_unsupported_action",
+      "denominator": "all_eligible_unanswerable_tasks",
+      "zero_denominator": null,
+      "higher_is_better": true
+    },
+    {
+      "id": "overall_valid_success",
+      "role": "descriptive_only_not_ranking",
+      "numerator": "valid_answerable_successes_plus_correct_unanswerable_responses",
+      "denominator": "all_eligible_answerable_and_unanswerable_tasks",
+      "zero_denominator": null,
+      "higher_is_better": true
+    },
+    {
+      "id": "sufficient_evidence_coverage",
+      "role": "diagnostic",
+      "numerator": "fully_observed_answerable_tasks_with_sufficient_current_legal_qualified_evidence_delivered_to_reader",
+      "denominator": "fully_observed_eligible_answerable_tasks",
+      "zero_denominator": null,
+      "higher_is_better": true,
+      "must_report_observation_fraction": true
+    },
+    {
+      "id": "response_coverage",
+      "role": "secondary",
+      "numerator": "answerable_tasks_with_substantive_answer_or_action",
+      "denominator": "all_eligible_answerable_tasks",
+      "zero_denominator": null,
+      "higher_is_better": true
+    },
+    {
+      "id": "selective_action_risk",
+      "role": "secondary_requires_coverage",
+      "numerator": "substantive_answers_or_actions_incorrect_or_unsupported_by_current_legal_evidence",
+      "denominator": "all_substantive_answers_or_actions",
+      "zero_denominator": null,
+      "higher_is_better": false
+    },
+    {
+      "id": "unnecessary_refusal",
+      "role": "secondary",
+      "numerator": "explicit_refusals_on_eligible_answerable_tasks",
+      "denominator": "all_eligible_answerable_tasks",
+      "zero_denominator": null,
+      "higher_is_better": false,
+      "timeouts_or_crashes_count_as_refusals": false
+    },
+    {
+      "id": "stale_adoption",
+      "role": "secondary",
+      "numerator": "uses_old_value_as_current_in_substantive_answer_or_action",
+      "denominator": "eligible_tasks_tagged_stale_challenge_before_run",
+      "zero_denominator": null,
+      "higher_is_better": false
+    },
+    {
+      "id": "withdrawal_exposure",
+      "role": "contract_diagnostic",
+      "numerator": "fully_observed_current_reads_exposing_prohibited_body_after_withdrawal_commit",
+      "denominator": "fully_observed_current_reads_started_after_withdrawal_commit",
+      "zero_denominator": null,
+      "higher_is_better": false,
+      "must_report_observation_fraction": true
+    },
+    {
+      "id": "benign_retention",
+      "role": "secondary",
+      "numerator": "valid_successes_on_predeclared_benign_unaffected_answerable_tasks",
+      "denominator": "all_eligible_benign_unaffected_answerable_tasks",
+      "zero_denominator": null,
+      "higher_is_better": true
+    },
+    {
+      "id": "qualified_source_preservation",
+      "role": "engineering_only",
+      "numerator": "representation_operations_preserving_required_full_body_qualifiers_scope_validity_and_source_identity",
+      "denominator": "predeclared_representation_operations_with_complete_input_output_observation",
+      "zero_denominator": null,
+      "higher_is_better": true,
+      "substitutes_for_task_effectiveness": false
+    },
+    {
+      "id": "unsupported_claim_rate",
+      "role": "diagnostic",
+      "numerator": "substantive_claims_without_current_legal_source_support",
+      "denominator": "all_independently_decomposable_and_judgeable_substantive_claims",
+      "zero_denominator": null,
+      "higher_is_better": false,
+      "must_also_report_per_slot_incidence": true
+    }
+  ],
+  "aggregation": {
+    "primary": [
+      "score_answerable_tasks_within_each_history_config_branch_lifecycle_checkpoint_repeat",
+      "average_frozen_repeats_within_history",
+      "equal_weight_predeclared_counterfactual_branches_and_lifecycles",
+      "select_final_scheduled_checkpoint",
+      "subtract_paired_comparator_within_history",
+      "equal_weight_mean_across_independent_history_clusters"
+    ],
+    "final_checkpoint_answerable_coverage_required_for_each_history": true,
+    "empty_answerable_cells": "design_validation_error_or_explicit_null_never_impute_zero",
+    "secondary_task_weighted_estimate": true,
+    "longitudinal_degradation_difference": "(experimental_final-experimental_first)-(comparator_final-comparator_first)",
+    "checkpoint_auc": "frozen_axis_weights_or_normalized_trapezoid_for_nonequidistant_axis",
+    "checkpoint_axis_and_weights": null,
+    "mandatory_strata": [
+      "hot",
+      "fresh",
+      "stable_facts",
+      "qualified_or_temporal_facts",
+      "corrections",
+      "withdrawals",
+      "benign_unaffected"
+    ],
+    "posthoc_best_checkpoint_selection": false,
+    "complete_frozen_primary_matrix_required": true,
+    "incomplete_matrix_full_primary_estimate": null
+  },
+  "confidence_intervals": {
+    "method": "paired_history_cluster_percentile_bootstrap",
+    "resampling_unit": "cluster_id",
+    "preserve_all_nested_units_and_configs": true,
+    "replicates": 10000,
+    "seed": 20261013,
+    "primary_confidence": "from_frozen_multiplicity_family",
+    "secondary_confidence": 0.95,
+    "pilot_interpretation": "exploratory_only_not_formal_pass_fail",
+    "unknown_binary_diagnostic_identification_bounds": [
+      "known_success_count / all_eligible_count",
+      "(known_success_count + unknown_count) / all_eligible_count"
+    ],
+    "identification_bounds_are_confidence_intervals": false,
+    "zero_event_rule_of_three_requires_independence": true,
+    "pilot_task_slots_qualify_as_independent_zero_event_trials": false,
+    "compute_formal_full_matrix_ci_when_global_budget_truncated": false
+  },
+  "power": {
+    "sample_size": null,
+    "calibrated_paired_standard_deviation": null,
+    "target_power_candidate": 0.8,
+    "family_wise_alpha_candidate": 0.05,
+    "minimum_improvement_planning_target_candidate": 0.05,
+    "noninferiority_margin_candidate": 0.03,
+    "threshold_status": "product_proposal_uncalibrated",
+    "required_inputs": [
+      "development_cluster_paired_variance_and_uncertainty",
+      "discordance_and_unknown_rates",
+      "frozen_primary_family_size",
+      "target_effect_and_noninferiority_margin",
+      "mandatory_strata_coverage",
+      "observed_cost_per_history",
+      "fixed_budget_and_stopping_rule"
+    ],
+    "planning_method": "paired_cluster_power_simulation_or_justified_approximation_with_variance_sensitivity",
+    "illustration_only": {
+      "paired_standard_deviation": 0.25,
+      "two_sided_alpha": 0.05,
+      "power": 0.8,
+      "effect": 0.05,
+      "approximate_independent_clusters": 196,
+      "decides_sample_size": false,
+      "ignores_multiplicity_for_illustration": true
+    },
+    "cannot_count_nested_slots_as_independent": true
+  },
+  "candidate_decisions": {
+    "status": "unfrozen_product_proposals",
+    "allow_evaluation_before_freeze": false,
+    "states": [
+      "pass",
+      "fail",
+      "inconclusive",
+      "not_evaluated",
+      "not_evaluable"
+    ],
+    "practical_improvement": {
+      "metric": "answerable_valid_success",
+      "target_absolute_difference": 0.05,
+      "pass": "adjusted_ci_lower > 0 AND point_estimate >= 0.05",
+      "fail": "adjusted_ci_upper <= 0 OR adjusted_ci_upper < 0.05",
+      "otherwise": "inconclusive",
+      "permitted_pass_claim": "positive_effect_with_point_estimate_meeting_planning_target",
+      "pass_does_not_prove": "effect_lower_bound_at_least_0.05"
+    },
+    "answerable_noninferiority": {
+      "margin": 0.03,
+      "pass": "adjusted_ci_lower > -0.03",
+      "fail": "adjusted_ci_upper < -0.03",
+      "otherwise": "inconclusive"
+    },
+    "unanswerable_correct_abstention_noninferiority": {
+      "margin": 0.03,
+      "formal_guardrail_requires_pre_frozen_family": true,
+      "pass": "predeclared_ci_lower > -0.03",
+      "fail": "predeclared_ci_upper < -0.03",
+      "otherwise": "inconclusive"
+    },
+    "own_longitudinal_nondegradation": {
+      "difference": "final_minus_first",
+      "margin": 0.03,
+      "formal_claim_requires_pre_frozen_family": true,
+      "pass": "predeclared_ci_lower > -0.03",
+      "fail": "predeclared_ci_upper < -0.03",
+      "otherwise": "inconclusive"
+    },
+    "migration_continuity": {
+      "difference": "same_destination_migrated_minus_continuous",
+      "margin": 0.03,
+      "formal_claim_requires_pre_frozen_family": true,
+      "pass": "predeclared_ci_lower > -0.03",
+      "fail": "predeclared_ci_upper < -0.03",
+      "otherwise": "inconclusive"
+    },
+    "cost_acceptability": {
+      "ratio": "experimental_cost_per_valid_answerable_success_divided_by_comparator_cost_per_valid_answerable_success",
+      "candidate_maximum_ratio": 1.25,
+      "formal_claim_requires_pre_frozen_family": true,
+      "pass": "predeclared_ci_upper <= 1.25",
+      "fail": "predeclared_ci_lower > 1.25",
+      "otherwise": "inconclusive",
+      "zero_success_or_unknown_core_cost": "inconclusive",
+      "global_budget_incomplete_matrix": "inconclusive"
+    },
+    "reliability_contract_blockers": {
+      "independent_reproduction_or_adjudication_required": true,
+      "any_confirmed_event_blocks_reliability_acceptance": [
+        "cross_scope_data_exposure",
+        "withdrawn_content_resurrection",
+        "pending_candidate_automatically_promoted_during_migration"
+      ],
+      "zero_observed_events_prove_unbounded_safety": false
+    },
+    "overall_winner_label": "not_defined",
+    "global_budget_incomplete_matrix": "inconclusive"
+  },
+  "migration": {
+    "operations_reported_separately": [
+      "shared_ledger_host_switch",
+      "separate_ledger_export_import",
+      "native_format_import_and_handoff"
+    ],
+    "conditions": [
+      "A_TO_B",
+      "B_CONTINUOUS",
+      "A_TO_B_TO_A",
+      "A_CONTINUOUS_WITH_SAME_INTERMEDIATE_UPDATES",
+      "B_EMPTY",
+      "B_SUFFICIENT_EVIDENCE_DIAGNOSTIC",
+      "NATIVE_BEST_FEASIBLE_MIGRATION"
+    ],
+    "primary_within_destination_difference": "A_TO_B_minus_B_CONTINUOUS",
+    "keep_destination_fixed": [
+      "host_version",
+      "model",
+      "prompt",
+      "tools",
+      "environment",
+      "budget",
+      "post_migration_tasks"
+    ],
+    "diagnostic_evidence_may_include_final_answer": false,
+    "diagnostic_evidence_participates_in_ranking": false,
+    "diagnostic_output_may_enter_memory": false,
+    "round_trip_required": true,
+    "round_trip_within_destination_difference": "A_TO_B_TO_A_minus_A_CONTINUOUS_WITH_SAME_INTERMEDIATE_UPDATES",
+    "round_trip_destination": "A",
+    "destination_recipe_and_embedding_rebuild_in_runtime_cost": true,
+    "imported_capsule_inherits_local_certification": false,
+    "formal_sample_size": null
+  },
+  "latency_and_recovery": {
+    "task_clock_start": "task_arrival",
+    "deadline_includes": [
+      "queue",
+      "retrieval",
+      "model",
+      "tool_execution",
+      "internal_retries"
+    ],
+    "task_deadline_seconds": null,
+    "recovery_horizon_seconds": null,
+    "recovery_clocks": [
+      "raw_correction_arrival_to_valid_evidence_or_valid_affected_task",
+      "admission_commit_to_old_body_invisibility",
+      "admission_commit_to_sufficient_valid_evidence"
+    ],
+    "recovery_curve": "successfully_recovered_events_by_t_divided_by_all_eligible_recovery_events",
+    "restricted_mean_unrecovered_time": "integral_0_to_tau_of_one_minus_recovery_curve",
+    "terminal_failures_contribute_full_observation_horizon": true,
+    "treat_terminal_failures_as_independent_kaplan_meier_censoring": false,
+    "separate_latency_scopes": [
+      "store_request",
+      "whole_agent_turn"
+    ],
+    "report": [
+      "valid_throughput",
+      "p50",
+      "p95",
+      "timeout_rate",
+      "system_error_rate",
+      "success_and_failure_latency_separately"
+    ],
+    "pilot_stable_p99_claims_allowed": false,
+    "total_test_duration_is_product_latency": false,
+    "task_cap_failure_state": "failed",
+    "global_budget_interruption_is_task_deadline_failure": false
+  },
+  "cost_accounting": {
+    "deduplication_key": "cost_event_id",
+    "required_ownership": [
+      "run_id",
+      "cluster_id",
+      "history_id",
+      "system_id",
+      "operation",
+      "stage",
+      "ledger"
+    ],
+    "ledgers": {
+      "system_runtime": [
+        "initialization",
+        "native_import",
+        "extraction_and_admission",
+        "embedding",
+        "retrieval_and_reranking",
+        "compaction",
+        "invalidation_and_repair",
+        "reader",
+        "action",
+        "failed_cancelled_and_retried_operations",
+        "migration_rebuild_and_binding",
+        "required_human_work"
+      ],
+      "evaluation": [
+        "scoring",
+        "judge",
+        "blind_adjudication"
+      ],
+      "development": [
+        "data_construction",
+        "tuning_and_parameter_search",
+        "debugging"
+      ],
+      "infrastructure": [
+        "runner",
+        "measurement",
+        "additional_research_replay_setup",
+        "test_snapshot_copy",
+        "infra_invalid_attempts"
+      ]
+    },
+    "runtime_cost_per_valid_answerable_success": {
+      "numerator": "all_system_runtime_cost_for_frozen_task_mix_including_common_prehistory_and_unanswerable_tasks",
+      "denominator": "answerable_valid_success_count",
+      "zero_denominator_value": null,
+      "zero_denominator_reason": "no_valid_success"
+    },
+    "raw_units": [
+      "input_tokens",
+      "cached_input_tokens",
+      "output_tokens",
+      "embedding_tokens",
+      "model_requests",
+      "cpu_seconds",
+      "gpu_seconds",
+      "wall_seconds",
+      "peak_rss_bytes",
+      "disk_delta_bytes",
+      "human_seconds"
+    ],
+    "retries_and_background_maintenance_included": true,
+    "shared_prefix_or_cache_executed_once_is_charged_once": true,
+    "allocation_weights_must_be_frozen_and_sum_to_one": true,
+    "separate_actual_experiment_and_deployment_scenario_cost": true,
+    "required_runtime_cost_may_move_to_infrastructure": false,
+    "unknown_currency_value": null,
+    "human_seconds_automatically_converted_to_tokens": false,
+    "unknown_core_cost_blocks_cost_claim": true,
+    "ownership_may_be_resolved_from_run_manifest": true,
+    "stage_enum": [
+      "D0",
+      "P0",
+      "P1",
+      "P2",
+      "P3",
+      "P4",
+      "P5"
+    ],
+    "stage_meanings": {
+      "D0": "design",
+      "P0": "harness_self_check",
+      "P1": "host_qualification",
+      "P2": "controlled_pilot",
+      "P3": "calibration_and_ablations",
+      "P4": "sealed_validation",
+      "P5": "real_host_and_migration"
+    },
+    "stage_and_ledger_are_orthogonal": true,
+    "exactly_one_ledger_per_cost_event": true,
+    "classification_examples": [
+      {
+        "operation": "pilot_measured_system_model_call",
+        "stage": "P2",
+        "ledger": "system_runtime"
+      },
+      {
+        "operation": "pilot_scoring",
+        "stage": "P2",
+        "ledger": "evaluation"
+      },
+      {
+        "operation": "additional_research_replay_setup",
+        "stage": "P2",
+        "ledger": "infrastructure"
+      },
+      {
+        "operation": "business_required_ingestion_or_repair",
+        "stage": "P2",
+        "ledger": "system_runtime"
+      },
+      {
+        "operation": "parameter_search",
+        "stage": "P3",
+        "ledger": "development"
+      },
+      {
+        "operation": "frozen_ablation_measured_system_call",
+        "stage": "P3",
+        "ledger": "system_runtime"
+      }
+    ],
+    "legacy_accounting_mapping": {
+      "online": "system_runtime",
+      "tuning": "development",
+      "judge": "evaluation",
+      "research_replay_setup": "infrastructure",
+      "harness_overhead": "infrastructure",
+      "pilot": "stage_P2_not_a_ledger"
+    },
+    "required_runtime_ingestion_or_repair_may_move_to_infrastructure": false,
+    "pilot_measured_system_calls_may_also_be_development": false,
+    "derived_human_minutes_expression": "human_seconds / 60",
+    "global_budget_truncated_complete_runtime_cost_claim": "inconclusive",
+    "admitted_events_track_excludes_autonomous_extraction_admission_cost_by_design": true,
+    "admitted_events_cost_is_complete_raw_conversation_cost": false
+  },
+  "freeze_gate": {
+    "all_required": [
+      "system_and_host_model_baseline_versions_locked",
+      "primary_baselines_qualified",
+      "admission_and_ownership_qualified_for_real_host",
+      "independent_held_out_history_manifest_hashed",
+      "gold_and_future_event_isolation_audited",
+      "primary_contrast_family_and_size_frozen",
+      "sample_size_power_and_variance_sensitivity_frozen",
+      "deadlines_and_recovery_horizon_frozen",
+      "candidate_thresholds_accepted_or_revised",
+      "budget_and_stopping_rule_authorized",
+      "scorer_and_judge_calibrated",
+      "independent_review_completed",
+      "complete_admitted_event_dataset_for_controlled_pilot_or_formal_mode"
+    ],
+    "currently_passed": false,
+    "formal_results_status": "not_evaluated"
+  },
+  "report_contract": {
+    "required_metric_fields": [
+      "metric_id",
+      "value_or_null",
+      "numerator",
+      "denominator",
+      "independent_cluster_count",
+      "known_count",
+      "unknown_count",
+      "unsupported_count",
+      "infra_invalid_count",
+      "aggregation",
+      "confidence_method",
+      "confidence_level",
+      "multiplicity_family",
+      "bootstrap_seed",
+      "decision_state",
+      "decision_reason",
+      "not_run_count",
+      "budget_exhausted_count",
+      "planned_count",
+      "started_count"
+    ],
+    "include_all_failures_and_costs": true,
+    "unknown_as_zero_allowed": false,
+    "engineering_tests_as_effect_size_allowed": false,
+    "results": null,
+    "required_per_task_fields": [
+      "terminal_state",
+      "failure_reason",
+      "response_kind",
+      "observation_status"
+    ],
+    "incomplete_global_budget_matrix_supports_formal_primary_claim": false
+  },
+  "metric_completeness_policy": {
+    "metric_denominators_assume_complete_scoreable_frozen_matrix": true,
+    "task_failures_remain_in_denominator": true,
+    "global_budget_interruption_full_matrix_metrics": null,
+    "partial_available_case_estimates_support_formal_claims": false
+  }
+}

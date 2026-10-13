@@ -1,0 +1,110 @@
+{
+  "schema": "recall-ledger.benchmark.design-check/1",
+  "checked_at": "2026-10-13T07:45:22.469922+00:00",
+  "status": "passed",
+  "claim_scope": "local_design_structure_only",
+  "checks": [
+    {
+      "check": "json_and_jsonl_parse_without_duplicate_keys",
+      "json_files": 4,
+      "jsonl_files": 6,
+      "status": "passed"
+    },
+    {
+      "check": "protocol_analysis_consistency",
+      "pilot_slots": 512,
+      "pilot_independent_clusters": 8,
+      "formal_sample_size": null,
+      "status": "passed"
+    },
+    {
+      "check": "example_shape_references_and_eligibility",
+      "clusters": 3,
+      "histories": 6,
+      "public_events": 44,
+      "gold_tasks": 8,
+      "answerability_counts": {
+        "answerable": 7,
+        "unanswerable": 1
+      },
+      "status": "passed"
+    },
+    {
+      "check": "no_gold_label_keys_in_public_event_metadata",
+      "scope": "field shape only; not a physical isolation or semantic leakage audit",
+      "status": "passed"
+    },
+    {
+      "check": "gold_action_arguments_match_visible_tool_schema",
+      "visible_tools": 6,
+      "checked_argument_objects": 7,
+      "scope": "schema alignment only; action/grader not executed",
+      "status": "passed"
+    },
+    {
+      "check": "policy_example_utf8_artifact_capacity",
+      "measured_policy_bytes": {
+        "P1": 808,
+        "P2": 127
+      },
+      "artifact_cap_bytes": 360,
+      "model_context_limit": false,
+      "status": "passed"
+    },
+    {
+      "check": "local_markdown_and_protocol_targets",
+      "local_markdown_links": 17,
+      "status": "passed"
+    },
+    {
+      "check": "product_source_unchanged",
+      "head": "6ff7f5824aa235046d27c18c971fe9f3b1dfa8ef",
+      "working_tree_clean": true,
+      "status": "passed"
+    },
+    {
+      "check": "final_round_trip_ablation_and_document_consistency",
+      "round_trip_destination": "A",
+      "round_trip_reference": "A continuous with same intermediate corrections and withdrawals",
+      "development_ablation_axes": 4,
+      "pilot_auto_expansion": false,
+      "all_local_links_exist": true,
+      "status": "passed"
+    }
+  ],
+  "input_file_sha256": {
+    "INTERFACES.md": "5d42c2d1b8eccc1f272984ba695ff667c5532b26122e19c6b85164ac67796881",
+    "README.md": "5729de7f7879868b54f50bd4cf2e3a354139ecc07435bb190065e70f5b276468",
+    "REVIEW.md": "12a52a2dde0708dfbb4197a04f629cf9eb0054bf5650c04bd3ccede581572ed7",
+    "SCORING.md": "bae6601bed73a3155d613f9f58add67adb9cfbd7d06cd812f011f3b7bf596f30",
+    "SPEC.md": "b09cd3bfd3fa353e4c269e16c4f31a9bf88f43658de091ce7bdf4b702797cfd4",
+    "TASKS.md": "466b76ee8ceeeeed1ab1eae8eb66de13efece45003a05a0a2eca156b9ee8f6b2",
+    "analysis-plan.json": "b158f11d3a25fc52a83db788310665ad0d7333f1ae92f6e1545b093db729aadc",
+    "examples/README.md": "3543c8f99aab57238cb0cc3697b0725c8ed86b36d030ad7ccfc3788a746ef0b6",
+    "examples/budget.gold.jsonl": "8891d1abc15b74173bfd6de91ebf73fdcf9cb8b011c99d05f2d5849b3502d2eb",
+    "examples/budget.public.jsonl": "47571bc0aa6ae85387102a0496e8b83d91fdc32cbbf4339e8e859d9312ce0cf1",
+    "examples/manifest.json": "f289845d70189e92c5fb9d6a2eabacd68b73102f77b8d84fb380e7346babeff7",
+    "examples/migration.gold.jsonl": "c76d804ffdc11016383121f606cea554f13af32ec54f110bf24ec26cf0712a88",
+    "examples/migration.public.jsonl": "6d7eb26e9e636466c5d2c05b670974a215d7ad552902f28d4455c702f272ef25",
+    "examples/revision.gold.jsonl": "d864a79435604fed7dfbcf1f967089adb03585ea241429c4fa1d759239b53540",
+    "examples/revision.public.jsonl": "cc307e0fe5cd8e7b0c8d28db59680c8db8643a35f376503ce8b0eec0df2255f6",
+    "examples/tools.public.json": "6e5d179ef152c8a0195b36948f56432703a9377b4288687e28c94feec3e13108",
+    "protocol.draft.json": "6735c90cbdeaf9b92ed3ce7b3dade1b6244f42f7145bc2212854d259feaad403"
+  },
+  "benchmark_model_calls": 0,
+  "benchmark_runs_executed": 0,
+  "grader_assertions_executed": false,
+  "physical_gold_isolation_tested": false,
+  "host_qualification_tested": false,
+  "performance_measured": false,
+  "formal_protocol_frozen": false,
+  "not_validated": [
+    "agent_task_outcomes",
+    "host_native_memory",
+    "admission_automation",
+    "native_migration",
+    "statistical_power",
+    "budget_feasibility",
+    "future_execution_authorization"
+  ]
+}

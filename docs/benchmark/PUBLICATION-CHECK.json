@@ -1,0 +1,130 @@
+{
+  "schema": "recall-ledger.benchmark.publication-check/1",
+  "date": "2026-10-14",
+  "timezone": "Asia/Shanghai",
+  "status": "passed",
+  "scope": "design_publication_structure_only",
+  "base_product_commit": "6ff7f5824aa235046d27c18c971fe9f3b1dfa8ef",
+  "historical_design_check": "DESIGN-CHECK-2026-10-13.json",
+  "historical_hash_scope": "Original 2026-10-13 workspace inputs only; use input_file_sha256 below for this adjusted publication.",
+  "checks": [
+    {
+      "check": "original_design_archive_preserved",
+      "status": "passed",
+      "original_input_hashes_verified": 17,
+      "historical_check_preserved_byte_for_byte": true
+    },
+    {
+      "check": "strict_json_and_jsonl_parse",
+      "status": "passed",
+      "json_documents": 5,
+      "jsonl_files": 6,
+      "jsonl_records": 52,
+      "duplicate_object_keys_rejected": true
+    },
+    {
+      "check": "protocol_analysis_and_evidence_boundaries",
+      "status": "passed",
+      "pilot_task_slots": 512,
+      "independent_history_clusters": 8,
+      "formal_sample_size": null,
+      "execution_enabled": false,
+      "public_examples_are_not_isolated_gold": true
+    },
+    {
+      "check": "event_sequence_and_gold_references",
+      "status": "passed",
+      "events": 44,
+      "histories": 6,
+      "clusters": 3,
+      "tasks": 8,
+      "answerable": 7,
+      "unanswerable_hold": 1
+    },
+    {
+      "check": "tool_argument_contract_and_task_scoped_count_guards",
+      "status": "passed",
+      "public_tool_schemas": 6,
+      "gold_exact_request_cases": 7,
+      "action_budget_per_task": 1,
+      "grader_assertions_executed": false
+    },
+    {
+      "check": "example_utf8_artifact_contract",
+      "status": "passed",
+      "policy_utf8_bytes": {
+        "P1": 808,
+        "P2": 127
+      },
+      "artifact_cap_bytes": 360,
+      "model_context_limit": false
+    },
+    {
+      "check": "local_markdown_and_protocol_targets",
+      "status": "passed",
+      "checked_local_markdown_links": 160,
+      "protocol_document_targets": 7,
+      "external_urls_not_network_revalidated": true
+    },
+    {
+      "check": "publication_payload_hygiene",
+      "status": "passed",
+      "files_scanned": 26,
+      "checks": [
+        "utf8_text_only",
+        "no_symlinks",
+        "no_binary_or_database_files",
+        "no_detected_private_local_paths",
+        "no_detected_selected_credential_patterns"
+      ],
+      "scope": "bounded pattern scan and document review, not a proof of absence of all sensitive data"
+    }
+  ],
+  "input_file_sha256": {
+    "README.md": "7302152a856f6f9dc4e5a248ca8d99da6dd7256c3fe371d6369e95748d88bf03",
+    "README.zh-CN.md": "4c0e7959863fc0654667f2d42503186651786d0c67ca3d4e5ba2b0aabe639775",
+    "docs/TESTING.md": "2837d642f4bd7223e149bcadf90f0bbf7b7e13351ee9b97a76ff2a727d722cc9",
+    "docs/benchmark/DESIGN-CHECK-2026-10-13.json": "9fd30a8ba08c66e4c1dab79fa326daa86321ab01b525e23eb1e56c7600746d4f",
+    "docs/benchmark/ENVIRONMENT.md": "f0a55e925847951dae046b5ff3f0043c1fe92ca9a20c022f44319fa82fb5178a",
+    "docs/benchmark/INTERFACES.md": "5d42c2d1b8eccc1f272984ba695ff667c5532b26122e19c6b85164ac67796881",
+    "docs/benchmark/README.md": "550e1ee9258f0b5556d3081aea9ee641bb0fca36ab919c87049f507ef2a9c777",
+    "docs/benchmark/REVIEW.md": "12a52a2dde0708dfbb4197a04f629cf9eb0054bf5650c04bd3ccede581572ed7",
+    "docs/benchmark/SCORING.md": "bae6601bed73a3155d613f9f58add67adb9cfbd7d06cd812f011f3b7bf596f30",
+    "docs/benchmark/SPEC.md": "b09cd3bfd3fa353e4c269e16c4f31a9bf88f43658de091ce7bdf4b702797cfd4",
+    "docs/benchmark/TASKS.md": "466b76ee8ceeeeed1ab1eae8eb66de13efece45003a05a0a2eca156b9ee8f6b2",
+    "docs/benchmark/analysis-plan.json": "b158f11d3a25fc52a83db788310665ad0d7333f1ae92f6e1545b093db729aadc",
+    "docs/benchmark/background/CRITICAL-REVIEW.md": "8b3a7421977b514bf12530dc3b58611492943720cb85afb2f6558eaf24037354",
+    "docs/benchmark/background/EVALUATION-REVIEW.md": "082328883510fce143a8422541e1b790ed03ec086d7cc63add2f2707a1bba3b5",
+    "docs/benchmark/background/HOST-REVIEW.md": "ae754f0387c55ca3209987bd030b7b01be255b773d9a13cd09affc599efd4361",
+    "docs/benchmark/background/PROTOCOL.md": "0dffef15c56207b4cc4496439b77540764f1b47174751a1a40fa00ea50adc073",
+    "docs/benchmark/examples/README.md": "9d51888d5bf9f0dfd44fd2dc68064dbde6c31967177801572951cdaf1373bbc4",
+    "docs/benchmark/examples/budget.gold.jsonl": "8891d1abc15b74173bfd6de91ebf73fdcf9cb8b011c99d05f2d5849b3502d2eb",
+    "docs/benchmark/examples/budget.public.jsonl": "47571bc0aa6ae85387102a0496e8b83d91fdc32cbbf4339e8e859d9312ce0cf1",
+    "docs/benchmark/examples/manifest.json": "f289845d70189e92c5fb9d6a2eabacd68b73102f77b8d84fb380e7346babeff7",
+    "docs/benchmark/examples/migration.gold.jsonl": "c76d804ffdc11016383121f606cea554f13af32ec54f110bf24ec26cf0712a88",
+    "docs/benchmark/examples/migration.public.jsonl": "6d7eb26e9e636466c5d2c05b670974a215d7ad552902f28d4455c702f272ef25",
+    "docs/benchmark/examples/revision.gold.jsonl": "d864a79435604fed7dfbcf1f967089adb03585ea241429c4fa1d759239b53540",
+    "docs/benchmark/examples/revision.public.jsonl": "cc307e0fe5cd8e7b0c8d28db59680c8db8643a35f376503ce8b0eec0df2255f6",
+    "docs/benchmark/examples/tools.public.json": "6e5d179ef152c8a0195b36948f56432703a9377b4288687e28c94feec3e13108",
+    "docs/benchmark/protocol.draft.json": "6735c90cbdeaf9b92ed3ce7b3dade1b6244f42f7145bc2212854d259feaad403"
+  },
+  "hash_scope": "Paths relative to repository root; excludes this report to avoid self-reference.",
+  "benchmark_model_calls": 0,
+  "benchmark_runs_executed": 0,
+  "grader_assertions_executed": false,
+  "sandbox_deployed": false,
+  "physical_gold_isolation_tested": false,
+  "host_qualification_tested": false,
+  "performance_measured": false,
+  "formal_protocol_frozen": false,
+  "not_validated": [
+    "Agent task outcomes",
+    "Native Memory effectiveness",
+    "autonomous admission",
+    "Sandbox isolation",
+    "stateful checkpoint equivalence",
+    "migration effectiveness",
+    "performance and cost",
+    "formal statistical power"
+  ]
+}

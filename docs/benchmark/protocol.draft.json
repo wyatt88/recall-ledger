@@ -1,0 +1,399 @@
+{
+  "schema": "recall-ledger.benchmark.protocol/0.1",
+  "benchmark_id": "recall-ledger-memory-benchmark",
+  "version": "0.1.0-design",
+  "created_at": "2026-10-13",
+  "timezone": "Asia/Shanghai",
+  "status": "design_only_unfrozen",
+  "evidence_status": "H0",
+  "protocol_frozen": false,
+  "execution_enabled": false,
+  "product_source_anchor": {
+    "repository": "https://github.com/wyatt88/recall-ledger",
+    "commit_sha": "6ff7f5824aa235046d27c18c971fe9f3b1dfa8ef",
+    "label": "design_review_anchor_not_benchmarked_version",
+    "rerun_requires_actual_build_sha": true
+  },
+  "documents": {
+    "specification": "SPEC.md",
+    "interfaces": "INTERFACES.md",
+    "task_catalog": "TASKS.md",
+    "scoring_authority": "SCORING.md",
+    "analysis_plan": "analysis-plan.json",
+    "development_examples": "examples/manifest.json",
+    "independent_review": "REVIEW.md"
+  },
+  "delivery_scope": {
+    "allowed": [
+      "design_documents",
+      "development_interface_examples",
+      "local_structural_validation"
+    ],
+    "benchmark_model_calls": 0,
+    "benchmark_api_calls": 0,
+    "benchmark_gpu_jobs": 0,
+    "product_code_changes": false,
+    "host_configuration_changes": false,
+    "benchmark_runner_implemented": false,
+    "grader_implemented": false,
+    "executed_results": null
+  },
+  "suites": [
+    {
+      "id": "S1",
+      "name": "task_utility",
+      "primary_metric": "answerable_valid_success",
+      "separate_metrics": [
+        "unanswerable_correct_abstention",
+        "sufficient_evidence_coverage",
+        "stale_adoption",
+        "unnecessary_refusal"
+      ]
+    },
+    {
+      "id": "S2",
+      "name": "longitudinal_and_repair",
+      "metrics": [
+        "checkpoint_quality",
+        "longitudinal_degradation_difference",
+        "stale_recurrence",
+        "benign_retention",
+        "recovery_fraction_at_fixed_horizon",
+        "restricted_mean_unrecovered_time"
+      ]
+    },
+    {
+      "id": "S3",
+      "name": "migration_and_handoff",
+      "metrics": [
+        "destination_absolute_valid_success",
+        "migrated_minus_same_destination_continuous",
+        "round_trip_withdrawal_resurrection",
+        "time_until_usable",
+        "human_restatement_seconds",
+        "migration_runtime_cost"
+      ]
+    },
+    {
+      "id": "S4",
+      "name": "performance_and_cost",
+      "metrics": [
+        "service_valid_throughput",
+        "service_p50_p95",
+        "end_to_end_time_to_valid_success",
+        "timeout_and_error_rates",
+        "complete_runtime_cost",
+        "cost_per_valid_answerable_success",
+        "cpu_rss_disk_and_queue"
+      ],
+      "service_and_end_to_end_are_separate": true
+    }
+  ],
+  "controlled_track": {
+    "systems": [
+      "C_NONE",
+      "C_MD",
+      "C_RAW",
+      "C_LIFECYCLE",
+      "C_RL_EVIDENCE",
+      "C_RL_MODEL"
+    ],
+    "input_modes_reported_separately": [
+      "admitted_events",
+      "raw_conversation"
+    ],
+    "primary_contrast": {
+      "experimental": "C_RL_EVIDENCE",
+      "comparator": "C_LIFECYCLE",
+      "input_mode": "admitted_events"
+    },
+    "md_is_branded_native_memory": false,
+    "same_information_permissions_and_reader_budget": true
+  },
+  "real_host_track": {
+    "systems": [
+      "H_NATIVE_DEFAULT",
+      "H_NATIVE_TUNED",
+      "H_RL_INTEGRATED",
+      "H_NATIVE_PLUS_RL",
+      "H_NONE"
+    ],
+    "primary_contrast": {
+      "experimental": "H_RL_INTEGRATED",
+      "comparator": "H_NATIVE_TUNED",
+      "input_mode": "raw_conversation"
+    },
+    "candidate_hosts": [
+      "OpenCode V1",
+      "Codex",
+      "local ChatGPT App",
+      "KiroCrew"
+    ],
+    "qualified_hosts": [],
+    "preferred_first_qualification_candidate": "OpenCode V1",
+    "host_version_lock": null,
+    "autonomous_admission_qualification": null,
+    "ownership_and_refresh_qualification": null,
+    "native_baseline_qualification": null,
+    "coexistence_supports_incremental_claim_only": true
+  },
+  "task_families": [
+    "F01_stable_cross_session",
+    "F02_conditions_temporal_conflict",
+    "F03_revision_propagation",
+    "F04_withdrawal_alternative_evidence_bounded_output",
+    "F05_fault_repair_recovery",
+    "F06_longitudinal_degradation_compaction",
+    "F07_scope_negative_transfer_untrusted_memory",
+    "F08_migration_handoff"
+  ],
+  "migration_comparison": {
+    "one_way": "A_TO_B_minus_same_B_CONTINUOUS",
+    "round_trip": "A_TO_B_TO_A_minus_same_A_CONTINUOUS",
+    "round_trip_continuous_receives_same_intermediate_corrections": true,
+    "native_best_feasible_migration_required": true,
+    "absolute_destination_quality_reported": true
+  },
+  "mechanism_ablations": {
+    "stage": "P3",
+    "extends_pilot_512_automatically": false,
+    "candidate_axes": [
+      "lexical_dense_hybrid_retrieval_with_fixed_source_lifecycle",
+      "dependency_incremental_repair_vs_on_demand_full_rebuild",
+      "evidence_vs_model_summary_quality_cost_frontier",
+      "same_backend_file_projection_vs_dynamic_host_delivery"
+    ],
+    "selected_cells_and_budget": null,
+    "formal_mechanism_claim_requires_pre_frozen_comparison_family": true
+  },
+  "data": {
+    "independent_unit": "cluster_id",
+    "split_unit": "independent_source_and_template_family",
+    "counterfactual_branches_are_independent_samples": false,
+    "reporting_strata": [
+      "challenge",
+      "everyday"
+    ],
+    "memory_dependence_strata": [
+      "memory_dependent",
+      "rediscoverable"
+    ],
+    "everyday_distribution_evidence": null,
+    "candidate_history_tokens": [
+      8192,
+      32768,
+      131072
+    ],
+    "tokenizer_lock": null,
+    "examples": {
+      "purpose": "public_development_interface_only",
+      "manifest": "examples/manifest.json",
+      "clusters": 3,
+      "branches_per_cluster": 2,
+      "histories": 6,
+      "input_mode": "raw_conversation",
+      "not_for_confirmatory_evaluation": true,
+      "gold_is_physically_isolated": false
+    },
+    "pilot_manifest": null,
+    "development_manifest": null,
+    "sealed_validation_manifest": null,
+    "sealed_validation_clusters": null,
+    "data_license_and_source_lock": null
+  },
+  "pilot": {
+    "stage": "P2",
+    "purpose": "exploratory_pipeline_and_cost_variance_calibration",
+    "input_mode": "admitted_events",
+    "clusters": 8,
+    "branches_per_cluster": 2,
+    "systems": [
+      "C_NONE",
+      "C_MD",
+      "C_RAW",
+      "C_RL_EVIDENCE"
+    ],
+    "lifecycle_profiles": [
+      "hot",
+      "fresh"
+    ],
+    "checkpoints": [
+      "K0",
+      "K1",
+      "K2",
+      "K3"
+    ],
+    "tasks_per_cell": 1,
+    "replicates_per_cell": 1,
+    "task_slots": 512,
+    "independent_clusters": 8,
+    "slots_are_model_calls": false,
+    "completion_guaranteed_by_candidate_budget": false,
+    "formal_claims_allowed": false
+  },
+  "context_budget_candidates": {
+    "primary_memory_tokens": 8192,
+    "tiers": [
+      {
+        "memory_tokens": 2048,
+        "reader_full_input_tokens": 32768,
+        "reader_output_tokens": 4096,
+        "status": "candidate_unfrozen"
+      },
+      {
+        "memory_tokens": 8192,
+        "reader_full_input_tokens": 32768,
+        "reader_output_tokens": 4096,
+        "status": "candidate_unfrozen"
+      },
+      {
+        "memory_tokens": 32768,
+        "reader_full_input_tokens": null,
+        "reader_output_tokens": 4096,
+        "status": "blocked_until_full_input_and_nonmemory_reserve_locked"
+      }
+    ],
+    "tool_and_file_backreads_count_toward_total": true,
+    "common_prompt_role_and_serialization": true
+  },
+  "time_and_lifecycle": {
+    "semantic_and_monotonic_clocks_separate": true,
+    "arrival_schedule_lock": null,
+    "settled_quality_window_seconds": null,
+    "recovery_horizon_seconds": null,
+    "probe_runs_on_isolated_clones_or_equal_prefix_replay": true,
+    "probe_answers_feed_back_into_main_history": false,
+    "extended_profiles": [
+      "after_actual_compaction",
+      "process_restart"
+    ],
+    "synthetic_compaction_is_real_host_compaction": false
+  },
+  "service_performance_candidates": {
+    "record_counts": [
+      1000,
+      10000,
+      100000
+    ],
+    "concurrency": [
+      1,
+      4,
+      16
+    ],
+    "update_fractions": [
+      0.0,
+      0.01,
+      0.1
+    ],
+    "full_cartesian_grid_required": false,
+    "load_points_lock": null,
+    "independent_process_runs": 3,
+    "warmup_requests_per_point": 100,
+    "measurement_requests_per_point": 2000,
+    "build_profile": "release",
+    "operations": [
+      "query",
+      "write",
+      "repair",
+      "transfer"
+    ],
+    "arrival_mode": "open_loop_with_scheduled_and_actual_send_times",
+    "arrival_rates_lock": null,
+    "slo_lock": null,
+    "cache_modes": [
+      "process_cold",
+      "warm"
+    ],
+    "os_page_cache_cold_is_assumed": false,
+    "p99_requires_precision_qualification": true,
+    "hardware_and_durability_lock": null,
+    "native_without_memory_api_has_service_comparison": false
+  },
+  "resource_budget_candidates": {
+    "authorization_status": "future_execution_not_authorized",
+    "authorization_record": null,
+    "model_lock": null,
+    "price_snapshot": null,
+    "currency": null,
+    "currency_cap": null,
+    "pilot_global": {
+      "aggregate_model_tokens": 25000000,
+      "includes_embedding_judge_failed_and_retried_tokens": true,
+      "active_wall_seconds": 43200,
+      "temporary_data_bytes": 10737418240,
+      "cpu_gpu_memory_lock": null
+    },
+    "per_task": {
+      "cumulative_input_plus_output_tokens": 120000,
+      "reader_calls": 20,
+      "deadline_seconds": 300,
+      "background_work_charged_to_global_budget": true
+    },
+    "cancel_drain_policy_lock": null,
+    "reserve_before_dispatch": true,
+    "reconcile_after_each_job": true,
+    "stop_on_any_frozen_cap": true,
+    "extend_budget_after_peeking_for_significance": false,
+    "task_cap_exhaustion": {
+      "terminal_state": "failed",
+      "failure_reason": "task_budget_exhausted",
+      "success": 0
+    },
+    "global_cap_exhaustion": {
+      "interrupted_terminal_state": "budget_exhausted",
+      "unstarted_terminal_state": "not_run",
+      "unscored_success": null,
+      "complete_matrix_formal_claim": "inconclusive"
+    }
+  },
+  "cost_accounting": {
+    "deduplication_key": "cost_event_id",
+    "stage_and_ledger_are_orthogonal": true,
+    "stages": [
+      "D0",
+      "P0",
+      "P1",
+      "P2",
+      "P3",
+      "P4",
+      "P5"
+    ],
+    "ledgers": [
+      "system_runtime",
+      "evaluation",
+      "development",
+      "infrastructure"
+    ],
+    "pilot_reader_ledger": "system_runtime",
+    "unknown_is_zero": false
+  },
+  "formal": {
+    "sample_size": null,
+    "total_task_slots": null,
+    "primary_family_size": null,
+    "power_record": null,
+    "candidate_practical_improvement_pp": 5,
+    "candidate_noninferiority_margin_pp": 3,
+    "candidate_max_cost_per_valid_success_ratio": 1.25,
+    "candidate_values_are_frozen": false,
+    "decision_rules_reference": "analysis-plan.json",
+    "results": null
+  },
+  "freeze_gate": {
+    "passed": false,
+    "required_records": [
+      "runner_and_verifier_positive_negative_controls",
+      "system_host_model_and_tokenizer_locks",
+      "qualified_primary_baselines",
+      "autonomous_admission_and_ownership_for_real_host",
+      "new_held_out_source_and_template_split",
+      "gold_future_and_cross_system_isolation_audit",
+      "fixed_arrival_schedule_deadlines_and_recovery_horizon",
+      "calibrated_sample_size_and_primary_comparison_family",
+      "accepted_or_revised_thresholds",
+      "cost_reservation_and_cancel_drain_validation",
+      "explicit_execution_resource_authorization",
+      "independent_frozen_protocol_review"
+    ]
+  }
+}

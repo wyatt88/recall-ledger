@@ -1,5 +1,11 @@
 # Testing and evidence boundaries
 
+The [Memory Benchmark design](benchmark/README.md) defines separate controlled,
+real-host, migration and cost comparisons. It includes public development
+examples and a [Sandbox/EKS environment plan](benchmark/ENVIRONMENT.md).
+The benchmark runner, host qualification and outcome experiments have not been
+executed; the publication checks validate documents and example structure only.
+
 The current [v0.4 validation](VALIDATION-v0.4.md) covers local host adapters,
 database binding, stdio MCP and Python wheel installation. Older execution
 records below are retained as historical observations.
