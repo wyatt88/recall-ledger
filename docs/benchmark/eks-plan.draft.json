@@ -49,7 +49,11 @@
       "logs_and_artifact_retention"
     ],
     "independent_of_prior_controlled_pilot_candidate_budget": true,
-    "unknown_cost_policy": "report unknown; do not infer zero or cost superiority"
+    "unknown_cost_policy": "report unknown; do not infer zero or cost superiority",
+    "model_call_spend_limit": null,
+    "cloud_resource_spend_limit": null,
+    "category_limits_bound_independently": true,
+    "one_category_authorization_does_not_authorize_the_other": true
   },
   "prior_controlled_pilot": {
     "protocol_reference": "protocol.draft.json#/pilot",
@@ -343,7 +347,9 @@
     "probe_can_write_back_to_main_history": false,
     "restore_is_equivalent_checkpoint_clone": false,
     "job_duplicate_start_fenced_by_controller_lease": true,
-    "job_completion_requires_trace_and_cost_drain": true
+    "job_completion_requires_trace_and_cost_drain": true,
+    "one_trial_per_node": true,
+    "control_services_on_trial_nodes": false
   },
   "trust_boundary": {
     "controller_and_gold_outside_untrusted_worker": true,
@@ -397,15 +403,27 @@
   ],
   "resource_candidates": {
     "max_concurrent_trials": 2,
-    "per_trial_total_vcpu": 4,
-    "per_trial_total_memory_gib": 8,
+    "per_trial_total_vcpu": 1,
+    "per_trial_total_memory_gib": 4,
     "per_trial_gp3_gib": 32,
     "gpu": false,
     "includes_agent_daemon_and_observer_overhead": true,
     "node_system_and_sandbox_overhead_additional": true,
     "native_only_does_not_start_recall_ledger": true,
     "same_total_trial_resource_budget_across_memory_modes": true,
-    "measured_or_authorized": false
+    "measured_or_authorized": false,
+    "node_instance_type": "m7i.large",
+    "node_vcpu": 2,
+    "node_memory_gib": 8,
+    "node_architecture": "amd64",
+    "node_capacity_type": "on-demand",
+    "max_active_trials_per_node": 1,
+    "per_node_root_gp3_gib": 32,
+    "control_services_outside_trial_nodes": true,
+    "paired_ami_runtime_daemonsets_locked": true,
+    "capacity_shortfall_policy": "qualify before execution; revise and refreeze every cell in the matched stratum together; retain qualified-system OOM and timeout in denominator",
+    "required_anti_affinity_scope": "all trial worker Pods across worker namespaces, topology kubernetes.io/hostname",
+    "runtime_and_ami_qualified": false
   },
   "configuration_identity": {
     "system_id_is_memory_mode_not_global_primary_key": true,

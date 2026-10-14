@@ -1,6 +1,6 @@
 # EKS 主测试平台设计
 
-日期：2026-10-14，Asia/Shanghai。**H0 实施设计，支持采用 EKS 作为 Linux 测试主平台；尚未创建集群、构建镜像或运行 Benchmark。** 本文没有提供已验证可执行的 runner、operator 或 Kubernetes manifests。
+日期：2026-10-14，Asia/Shanghai。**H0 实施设计，采用 EKS 作为 Linux 测试主平台；未构建测试镜像或运行 Benchmark。** 已开始实现只读环境发现与本地模型费用账本，使用方式和边界见 [PREFLIGHT.md](PREFLIGHT.md)。本文没有提供已验证可执行的 runner、operator 或 Kubernetes manifests。
 
 ## 1. 平台职责与信任边界
 
@@ -10,7 +10,8 @@ EKS 承接不同 Agent 的批量试验、状态保留、故障注入和资源计
 可信控制域：sealed data / gold / grader、Controller、预算账、模型出口
                     │ 当前公开事件、试验租约；无答案或未来事件
                     ▼
-EKS Worker 域：Job → 单 trial Pod [Agent + 按模式启用的 RecallLedger daemon]
+EKS Worker 域：每 trial 一台同规格专用实例 → Job → 单 trial Pod
+                         [Agent + 按模式启用的 RecallLedger daemon]
                     │ 独占状态卷；仅交付当前 prefix
                     ▼
 本 trial 产物入口 → 不可覆盖的 trace / 文件证据 → 私有 verifier
@@ -27,6 +28,8 @@ Controller 与 grader 使用独立身份和存储，可运行在独立管理集�
 一个 trial 绑定 `cluster_id / history_id / counterfactual_branch / configuration_id / lifecycle_profile / replicate`，由一个 Job 连续推进整段历史；不是每条消息新建空 Pod。configuration_id 按 [INTERFACES](INTERFACES.md#2-配置与-manifest) 唯一锁定 Agent/模式/版本；每个 checkpoint/task 保留独立 run/trace 记录，并引用所属 trial。队列、卷、费用与迁移两端都使用该身份，不能只用 H_* 模式名。
 
 同一 Agent 的 Native 与 RecallLedger 配对使用同节点规格、架构、AZ、存储档位、模型服务位置和时间边界；分别从合法初态开始，不共享 Home、session、DB、缓存或远端账号 Memory。运行顺序随机化或交错分块。不同 Agent 的配置及集成能力另行锁定，不能因同在 EKS 就宣称 Native 语义相同。
+
+**一个 trial 独占一台小实例**，Native 和 RL 两侧使用不同实例但固定相同规格，不在大节点内并排放多个测试 Job。Controller、模型出口、评分器和产物服务放在试验节点之外。一个 Job 推进完整历史，不能把历史中的每条消息拆成无状态的新实例。
 
 512 task slots 只是既有 pilot 的逻辑任务数量，不是512个并发 Pod，也没有为新增 Agent 自动批准资源预算。扩展系统矩阵必须重新计算完整执行量；独立历史簇数量不随 Pod 或 checkpoint 数增加。
 
@@ -66,6 +69,8 @@ Controller 是试验重试的唯一决策者。候选 Job 配置为 `parallelism
 4. 供应商不支持请求幂等时，超时不能盲目重发；保留 unknown/unsettled 和预留额度，按供应商回查或冻结的失败规则处理。不能同时承诺“绝不重复调用”和透明无限重试。
 5. 全局预算与每 trial 配额同时校验。重试、后台维护、embedding、judge、失败尝试共用原 `budget_id`，不得重新领取总额度。预算停止须阻断新出口请求并取消/结算已启动工作。
 
+模型调用与 AWS 资源分别绑定预算，不能从一类已授权额度推导另一类额度。模型账包含所有 Agent、subagent、提取、摘要、修复、embedding、judge、失败和重试；AWS 账包含节点、卷、网络、日志与保留费用。预算金额、供应商价目和实际环境绑定保存在操作者私有执行配置中，不在通用公开草案中记录个人云账户或凭据。
+
 trial 租约只保护执行调度，不是 RecallLedger 内部维护 lease 的替代品。恢复后分别验证两者。基础设施失败的重跑是否排除、是否对配对双方重跑，执行 [SCORING](SCORING.md) 的冻结规则，不根据结果好坏选择重试。
 
 ## 6. Sandbox 与节点选择
@@ -80,11 +85,15 @@ qualification 包含 gold/future/cross-trial sentinel、卷/网络/凭据隔离�
 
 ## 7. 性能池、成本与首轮候选资源
 
-主要延迟/成本对照使用固定 On-Demand node pool、固定并发与单一实例型号/架构；采用 taint/toleration 和资源预留控制邻居负载。测量窗口不进行自动缩容或 consolidation。记录 CPU throttling、RSS、磁盘等待、网络和队列延迟。
+主要延迟/成本对照使用固定 On-Demand node pool、固定并发与单一实例型号/架构。一 trial 一实例，配对锁定精确 AMI、内核、container runtime、Sandbox、DaemonSet 镜像和资源配置。固定场景、工具、数据前缀与任务顺序；Native 与 RL 各自保持完整独立状态。记录 CPU throttling、RSS、磁盘等待、网络和队列延迟。
+
+节点专用 taint、Worker required node affinity 与 required Pod anti-affinity 共同约束调度；anti-affinity 按 `kubernetes.io/hostname` 排斥**所有试验 Worker**，覆盖相关 Worker namespaces，不能只匹配同一个 trial ID。Controller、judge、网关和业务 Pod 不容忍试验节点 taint。系统 DaemonSets 的开销仍存在，需逐节点核对并保留相同版本和配置；“专用”不等于没有系统负载。
+
+Karpenter 固定 instance type、architecture、On-Demand、AZ 和精确 AMI；测量期禁止 Drift/Underutilized 等自愿 disruption。`WhenEmpty` 仅限制 consolidation，不阻止 expiration 或所有故障；不得把它、PDB 或 `do-not-disrupt` 当作无中断保证。运行时锁定 expiration 策略，强制中断按协议记入可靠性与失败事件。Karpenter NodePool limits 也不是原子美元预算或严格最大节点数；Controller 另行限制并发和记录实际实例启动。
 
 Spot 中断、Karpenter 弹性与不同 Sandbox runtime 分别进入可靠性/吞吐试验；不混入主要 Memory 延迟结果后归因给算法。模型服务若不在同区域，外部延迟与模型版本漂移单列。
 
-首轮 qualification 的容量草案：最多2个并发 trial，每 trial 总计4 vCPU/8 GiB（含 Agent、daemon 与观测开销）、独占32 GiB gp3；不配置 GPU。**这些是待验证起点，不是性能实测、已批准云资源或执行预算。** 节点还需扣除系统与 Sandbox overhead；本地模型需求须另算，不能硬套该档位。
+首轮 qualification 候选为最多2个并发 trial，各独占一台 `m7i.large`（2 vCPU / 8 GiB）同规格 On-Demand 实例；每 trial 的 Agent、daemon 和观测进程总计请求/限制 1 CPU / 4 GiB，另留系统与 Sandbox overhead；每实例32 GiB gp3系统盘，每 trial 独占32 GiB gp3数据盘，无 GPU。**这是待测容量起点，不是已批准资源或性能结论。** 必须先验证实际 allocatable、DaemonSet requests 和 RuntimeClass overhead 能容纳 Worker。若容量不足，统一提高整个对照分层的规格并重新冻结配置；不能只给 RL 或某款 Agent 单独加资源后报告算法优势。正式执行后发生的 OOM/timeout 保留在任务分母中，不作为静默加配重试的理由。本地模型需求另设硬件分层。
 
 成本账包括模型/embedding/judge、后台修复、EC2、EKS 控制面、闲置预留、EBS/snapshot、对象存储请求与容量、网络/NAT、日志、失败重试和清理滞留。按现行 [费用合同](INTERFACES.md#6-cost-event-contract)分账，不遗漏 infrastructure，也不把被测系统必要 ingestion/修复移出 system_runtime；unknown 不填0。
 
@@ -100,7 +109,7 @@ Spot 中断、Karpenter 弹性与不同 Sandbox runtime 分别进入可靠性/�
 
 macOS 原生 App 以 external Worker 接同一 Controller、预算与证据合同；实际运行在合格 Mac 环境，分别固定账号状态与 App 版本。Linux CLI/SDK 通过不能替代桌面 App 验证，Mac 与 EKS 的不同硬件结果不得直接用作 Memory 算法性能配对。
 
-执行前仍需实际锁定 AWS account/region、集群与权限、节点/AMI/runtime 版本、Agent/模型版本、供应商访问及总资源预算。本轮模型/API/GPU 与云写入预算为0；未部署环境。
+执行前仍需在私有执行配置中锁定 AWS account/region、集群与权限、节点/AMI/runtime 版本、Agent/模型版本、供应商访问及两类预算。公开草案保留未绑定状态。已执行的只读发现和本地工具测试不构成云部署、模型调用或 Benchmark 成绩。
 
 ## 一手来源与读取边界
 

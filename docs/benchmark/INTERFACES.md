@@ -1,6 +1,6 @@
 # Harness 接口与数据合同
 
-版本 `0.1.0-design`。以下为待实现接口，不存在可直接运行的 Benchmark CLI。示例 assertion 是判分 DSL 设计，没有已实现语义解释器。
+版本 `0.1.0-design`。以下任务执行和评分接口待实现，不存在端到端 Benchmark runner。[环境发现与费用账本](PREFLIGHT.md)是已开始实现的独立基础工具，不实现下面的完整Controller/Worker合同。示例 assertion 是判分 DSL 设计，没有已实现语义解释器。
 
 ## 1. 信任与进程边界
 

@@ -3,17 +3,15 @@
   "date": "2026-10-14",
   "timezone": "Asia/Shanghai",
   "status": "passed",
-  "scope": "eks_first_multi_agent_design_structure_only",
-  "base_product_commit": "7ccad29ebdd8eee476cdfdf06ed813502ca5e412",
+  "scope": "initial_preflight_and_local_model_budget_tools; no Agent benchmark",
+  "base_product_commit": "d513b964d2feb7a1054be38ea5ccf88e0747cf65",
   "historical_design_check": "DESIGN-CHECK-2026-10-13.json",
-  "historical_hash_scope": "Original 2026-10-13 workspace only; current hashes follow. Previous publication checks remain in Git history.",
+  "historical_hash_scope": "Earlier publication checks remain in Git history. Original research evidence is not overwritten.",
   "checks": [
     {
-      "check": "historical_provenance",
+      "check": "previous_publication_inputs_at_base_commit",
       "status": "passed",
-      "prior_publication_inputs_verified": 26,
-      "original_design_inputs_verified": 17,
-      "historical_record_preserved": true
+      "inputs_verified": 29
     },
     {
       "check": "strict_json_and_jsonl_parse",
@@ -24,83 +22,79 @@
       "duplicate_object_keys_rejected": true
     },
     {
-      "check": "controlled_pilot_and_formal_contract_preserved",
+      "check": "unfrozen_protocol_and_candidate_matrix_preserved",
       "status": "passed",
-      "task_slots": 512,
+      "controlled_pilot_slots": 512,
       "independent_clusters": 8,
-      "formal_sample_size": null,
-      "execution_enabled": false
-    },
-    {
-      "check": "eks_configuration_identity_and_execution_gates",
-      "status": "passed",
       "candidate_cells": 9,
-      "qualified_cells": 0,
-      "support_status": {
-        "pending_qualification": 3,
-        "unsupported_current_implementation": 6
-      },
-      "unique_candidate_ids": 9,
-      "immutable_configuration_ids_unfrozen": true,
-      "deployment_enabled": false,
-      "budget_bound": false
+      "runnable_cells": 0,
+      "directed_routes": 6
     },
     {
-      "check": "directed_migration_design",
+      "check": "one_trial_per_small_instance_and_separate_budget_categories",
       "status": "passed",
-      "candidate_routes": 6,
-      "sample_size_and_comparison_family": null,
-      "source_target_configuration_ids_required": true
+      "runtime_qualified": false,
+      "private_execution_budgets_not_embedded": true
     },
     {
-      "check": "event_and_gold_references",
+      "check": "local_markdown_targets",
       "status": "passed",
-      "events": 44,
-      "histories": 6,
-      "clusters": 3,
-      "tasks": 8,
-      "answerable": 7,
-      "unanswerable_hold": 1
+      "target_count": 191,
+      "anchors_not_exhaustively_validated": true
     },
     {
-      "check": "tool_contract_alignment",
-      "status": "passed",
-      "public_tools": 6,
-      "gold_request_cases": 7,
-      "grader_assertions_executed": false
+      "check": "rustfmt_and_locked_clippy_all_targets",
+      "status": "passed"
     },
     {
-      "check": "utf8_artifact_budget",
+      "check": "locked_rust_all_targets_tests",
       "status": "passed",
-      "policy_sizes_utf8_bytes": {
-        "P1": 808,
-        "P2": 127
-      },
-      "artifact_cap_bytes": 360
+      "tests_passed": 227,
+      "new_budget_integration_tests": 14,
+      "includes_process_concurrency_and_abrupt_exit": true,
+      "platform": "local macOS; Linux CI not observed in this check"
     },
     {
-      "check": "local_markdown_and_protocol_targets",
+      "check": "python_preflight_fixtures",
       "status": "passed",
-      "checked_local_markdown_links": 187,
-      "external_urls_not_exhaustively_revalidated": true
+      "tests_passed": 13,
+      "uses_mock_commands": true
+    },
+    {
+      "check": "independent_role_review",
+      "status": "completed",
+      "preflight_findings_fixed": [
+        "AWS ExecCredential apiVersion compatibility",
+        "CNI node-agent disabled flag preserved"
+      ],
+      "budget_blocking_findings": 0,
+      "not_independent_statistical_evidence": true
+    },
+    {
+      "check": "default_cargo_run_compatibility",
+      "status": "passed",
+      "output": "recall-ledger 0.4.0"
     },
     {
       "check": "publication_payload_hygiene",
       "status": "passed",
-      "files_scanned": 29,
-      "scope": "UTF-8 text, symlinks, selected private-path and credential patterns; not a proof of absence of all sensitive data"
+      "files_scanned": 36,
+      "scope": "UTF-8 text, no symlinks, known private target identifiers and credential patterns; not a proof of absence of all sensitive data"
     }
   ],
   "input_file_sha256": {
+    ".github/workflows/ci.yml": "2442dd24f7d9520434177199608af968d249e1ed4fa60e0ef98d2d71472cf881",
+    "Cargo.toml": "f1696a048f34de0d98a0dfdccfb499428860bc7871454c509de7b6ca7cceb85d",
     "README.md": "7302152a856f6f9dc4e5a248ca8d99da6dd7256c3fe371d6369e95748d88bf03",
     "README.zh-CN.md": "4c0e7959863fc0654667f2d42503186651786d0c67ca3d4e5ba2b0aabe639775",
     "docs/TESTING.md": "2837d642f4bd7223e149bcadf90f0bbf7b7e13351ee9b97a76ff2a727d722cc9",
     "docs/benchmark/AGENT-MATRIX.md": "076d9dff1574b16a7ce6d4a03c6f6288dfa120be23cba1c3b5857ce70372a0ee",
     "docs/benchmark/DESIGN-CHECK-2026-10-13.json": "9fd30a8ba08c66e4c1dab79fa326daa86321ab01b525e23eb1e56c7600746d4f",
-    "docs/benchmark/EKS.md": "3ebdb6bed010f2bcb03f572bdbe442471dd7209f48bdab738b4345fadf436b0a",
+    "docs/benchmark/EKS.md": "eafdb03415f67cdd76c9af53d9da594070c15a439ffe32d14d066c6ad2a85856",
     "docs/benchmark/ENVIRONMENT.md": "688fd3a67d1f1ae96770c525dd127bcdc8664eb45836cb660737d5ceae5604ae",
-    "docs/benchmark/INTERFACES.md": "3813c449be0ba75e18718edfce63964794ceec0e5ca340399f9a3781f1462309",
-    "docs/benchmark/README.md": "977e194fa1882271af186b9fc9cc0886a440866e80da1f31699658230d1c169f",
+    "docs/benchmark/INTERFACES.md": "cc7aac9a57ceec0028ef0f9461f70a48d5eb54301e775130b559dffc1fd9913a",
+    "docs/benchmark/PREFLIGHT.md": "518915dc2656f0ea4eed51440211cd2b029268609ffbaf43f34843abc099e451",
+    "docs/benchmark/README.md": "23c623bae8016a5b567faf9da280d07d8ac1d035d8c30acb89fdb24e7457b4cf",
     "docs/benchmark/REVIEW.md": "6b4c6f01255df28d101b11cf1f33e985011aa73397cfdae81b891c9d393ec7a6",
     "docs/benchmark/SCORING.md": "bae6601bed73a3155d613f9f58add67adb9cfbd7d06cd812f011f3b7bf596f30",
     "docs/benchmark/SPEC.md": "b09cd3bfd3fa353e4c269e16c4f31a9bf88f43658de091ce7bdf4b702797cfd4",
@@ -110,7 +104,7 @@
     "docs/benchmark/background/EVALUATION-REVIEW.md": "082328883510fce143a8422541e1b790ed03ec086d7cc63add2f2707a1bba3b5",
     "docs/benchmark/background/HOST-REVIEW.md": "ae754f0387c55ca3209987bd030b7b01be255b773d9a13cd09affc599efd4361",
     "docs/benchmark/background/PROTOCOL.md": "0dffef15c56207b4cc4496439b77540764f1b47174751a1a40fa00ea50adc073",
-    "docs/benchmark/eks-plan.draft.json": "324f382d9e5f8e79ee51cdaf6aed6fca3ceb67df941b3c6eb10cb7d36f7c84c6",
+    "docs/benchmark/eks-plan.draft.json": "f509d5969345b79bd12116009fbdba289ef64ce904c2be263fadd286425636fa",
     "docs/benchmark/examples/README.md": "9d51888d5bf9f0dfd44fd2dc68064dbde6c31967177801572951cdaf1373bbc4",
     "docs/benchmark/examples/budget.gold.jsonl": "8891d1abc15b74173bfd6de91ebf73fdcf9cb8b011c99d05f2d5849b3502d2eb",
     "docs/benchmark/examples/budget.public.jsonl": "47571bc0aa6ae85387102a0496e8b83d91fdc32cbbf4339e8e859d9312ce0cf1",
@@ -120,9 +114,13 @@
     "docs/benchmark/examples/revision.gold.jsonl": "d864a79435604fed7dfbcf1f967089adb03585ea241429c4fa1d759239b53540",
     "docs/benchmark/examples/revision.public.jsonl": "cc307e0fe5cd8e7b0c8d28db59680c8db8643a35f376503ce8b0eec0df2255f6",
     "docs/benchmark/examples/tools.public.json": "6e5d179ef152c8a0195b36948f56432703a9377b4288687e28c94feec3e13108",
-    "docs/benchmark/protocol.draft.json": "5959c70dc94022f466dbb3ff12418a6610114730d655aa8d2b14d1d9565c9a04"
+    "docs/benchmark/protocol.draft.json": "5959c70dc94022f466dbb3ff12418a6610114730d655aa8d2b14d1d9565c9a04",
+    "src/bin/recall-bench-budget.rs": "cfd20ee4c64883d3900216ab2bc950e8e373ee697320b3e235b329eb78edd273",
+    "tests/benchmark_budget.rs": "11a709dff3a10a3dae63bbe6975ed99b8b42773a4d00b1d7f6deda2ccb862187",
+    "tools/eks_preflight.py": "ca56f76f20fabbb7ac36e7a40680e9d256c6b9cf9040197df9d43a2e71215349",
+    "tools/tests/test_eks_preflight.py": "aab3ec97e7a76e327052544567ac2512cd83199e31f37e21d65b3a95c327ab3e"
   },
-  "hash_scope": "Paths relative to repository root; excludes this report.",
+  "hash_scope": "Paths relative to repository root; excludes this report. No cloud inventory, kubeconfig or local budget database included.",
   "benchmark_model_calls": 0,
   "benchmark_runs_executed": 0,
   "grader_assertions_executed": false,
@@ -132,15 +130,15 @@
   "performance_measured": false,
   "formal_protocol_frozen": false,
   "not_validated": [
-    "Agent task outcomes",
-    "Native Memory effectiveness",
+    "Agent task outcomes and Native Memory effectiveness",
     "autonomous admission",
-    "Sandbox isolation",
+    "Sandbox isolation and EKS workload lifecycle",
     "stateful checkpoint equivalence",
-    "EKS resources and runtime",
-    "budget enforcement",
+    "provider gateway and invoice cap enforcement",
+    "per-trial quota and lease fencing",
+    "distributed budget service",
+    "AWS cost enforcement",
     "migration effectiveness",
-    "performance and cost",
-    "formal statistical power"
+    "performance and formal statistical power"
   ]
 }

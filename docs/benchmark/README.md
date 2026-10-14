@@ -4,13 +4,14 @@
 
 **2026-10-14 GitHub 发布说明：**本目录发布设计规格与公开开发样例。根据用户后续选择，[测试环境方案](ENVIRONMENT.md)已调整为 EKS 主平台、多 Agent Worker；本机用于开发，真实桌面 App 经外部 Worker 接入。没有发布 Benchmark 成绩或可运行的 Benchmark runner。背景审阅记录保留其原始日期和证据边界；本目录规格与统计合同是后续实现入口。
 
-**交付状态：设计规格；实验未运行，正式协议未冻结。** 目标是公平比较 Agent Native Memory、强原文检索/生命周期基线与 RecallLedger 在实际任务、长期变化、迁移和成本上的差异。规格沿用[已审阅比较原则](background/PROTOCOL.md)，此处进一步定义实现接口、输入样例、配置与判定。
+**交付状态：设计规格及初期基础工具；实验未运行，正式协议未冻结。** 目标是公平比较 Agent Native Memory、强原文检索/生命周期基线与 RecallLedger 在实际任务、长期变化、迁移和成本上的差异。规格沿用[已审阅比较原则](background/PROTOCOL.md)，此处进一步定义实现接口、输入样例、配置与判定。
 
 | 文件 | 用途 |
 | --- | --- |
 | [SPEC.md](SPEC.md) | Suite、对照、数据、负载、执行阶段和实现顺序 |
 | [ENVIRONMENT.md](ENVIRONMENT.md) | EKS 主平台、本机开发与外部真实 App Worker 的构建边界 |
 | [EKS.md](EKS.md) / [eks-plan.draft.json](eks-plan.draft.json) | EKS 拓扑、运行生命周期、资源与预算待绑定的部署计划 |
+| [PREFLIGHT.md](PREFLIGHT.md) | 只读 EKS 发现和本地 Rust 模型费用账本；一 trial 一实例的运行前边界 |
 | [AGENT-MATRIX.md](AGENT-MATRIX.md) | 多 Agent 的 Native / RecallLedger / 共存资格与迁移矩阵 |
 | [protocol.draft.json](protocol.draft.json) | 机器可读候选配置、预算上限及未满足的运行门槛 |
 | [INTERFACES.md](INTERFACES.md) | replay、backend/Host driver、trace、cost、verifier 与报告的接口合同 |
@@ -37,7 +38,7 @@
 
 ## 2026-10-13 设计阶段边界
 
-本轮只允许文稿、接口设计和小型本地结构检查；模型/API/GPU 调用预算为 0。没有运行被测 Agent、修改用户 Memory 或 Host 配置、提交产品代码、创建服务或发布结果。
+初版设计阶段仅进行了文稿与小型本地结构检查，模型/API/GPU 调用为 0。后续开始实现环境发现和费用账本，仍未运行被测 Agent、修改用户 Memory 或 Host 配置、创建测试服务或发布结果。实际执行预算按操作者的模型和云资源授权分别绑定。
 
 示例 gold 与公开事件目前放在同一资料包中，**没有物理隔离**，只供实现和人工审阅。正式验证必须使用新封存历史，并通过真实访问控制隔离评分器。
 
