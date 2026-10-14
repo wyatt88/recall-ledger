@@ -43,8 +43,10 @@ jobs:
         run: cargo clippy --locked --all-targets -- -D warnings
       - name: Run tests
         run: cargo test --locked --all-targets
-      - name: Test read-only EKS preflight fixtures
+      - name: Test EKS preflight and sandbox probes
         run: python3 -m unittest discover -s tools/tests -v
+      - name: Test sandbox bootstrap, manifests and guarded egress
+        run: python3 -m unittest discover -s infra/eks/sandbox -p 'test_*.py' -v
       - name: Build Python wheel with local plugin runtime
         run: python3 -m pip wheel --no-deps --wheel-dir "$RUNNER_TEMP/recall-wheel" ./sdk/python
       - name: Test Python SDK, local adapters and isolated wheel

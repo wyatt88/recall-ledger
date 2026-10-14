@@ -77,7 +77,7 @@ trial 租约只保护执行调度，不是 RecallLedger 内部维护 lease 的�
 
 第一阶段候选采用专用 EC2 Worker node pool，与 Controller/评分器分离；选定可提供所需隔离的 runtime 并验证 `RuntimeClass`、socket、SQLite、子进程、卷挂载和观测能力。**普通 Pod、namespace 或专用节点均不能单独证明是强 Sandbox。** 未通过隔离 qualification 时只运行受信任的 fixture，不接开放式 Agent 代码执行。
 
-不预设 gVisor、Kata、Nitro Sandbox 已集成或适配所选 EKS/AMI；架构、内核、CRI、权限与性能影响均需实际核验。当前 EKS 官方文档明确 EBS 不能挂载到 Fargate Pod，因此本文 EBS 方案不采用 Fargate。
+2026-10-15 已在一台新建 AL2023 / `m7i.large` 节点上执行 gVisor `systrap` 的 offline 和受控 online 探针，见 [Sandbox 验收记录](SANDBOX-QUALIFICATION.md)及[可复现实现](../../infra/eks/sandbox/README.md)。online 只验证合成服务出口，未接付费模型或开放式 Agent。Kata、Nitro Sandbox、其他 AMI 和 runtime 尚未验证。当前 EKS 官方文档明确 EBS 不能挂载到 Fargate Pod，因此本文 EBS 方案不采用 Fargate。
 
 Worker 使用最小 RBAC/云身份，默认不挂 ServiceAccount token，不提供 hostPath、宿主 runtime socket、privileged 或 host network/PID；限制 metadata service、跨 trial 网络和任意外网出口。NetworkPolicy 需核验 CNI 实际执行；模型出口及当前输入入口还须做独立身份校验。
 
@@ -93,7 +93,7 @@ Karpenter 固定 instance type、architecture、On-Demand、AZ 和精确 AMI；�
 
 Spot 中断、Karpenter 弹性与不同 Sandbox runtime 分别进入可靠性/吞吐试验；不混入主要 Memory 延迟结果后归因给算法。模型服务若不在同区域，外部延迟与模型版本漂移单列。
 
-首轮 qualification 候选为最多2个并发 trial，各独占一台 `m7i.large`（2 vCPU / 8 GiB）同规格 On-Demand 实例；每 trial 的 Agent、daemon 和观测进程总计请求/限制 1 CPU / 4 GiB，另留系统与 Sandbox overhead；每实例32 GiB gp3系统盘，每 trial 独占32 GiB gp3数据盘，无 GPU。**这是待测容量起点，不是已批准资源或性能结论。** 必须先验证实际 allocatable、DaemonSet requests 和 RuntimeClass overhead 能容纳 Worker。若容量不足，统一提高整个对照分层的规格并重新冻结配置；不能只给 RL 或某款 Agent 单独加资源后报告算法优势。正式执行后发生的 OOM/timeout 保留在任务分母中，不作为静默加配重试的理由。本地模型需求另设硬件分层。
+首轮配对 qualification 候选为最多2个并发 trial，各独占一台 `m7i.large`（2 vCPU / 8 GiB）同规格 On-Demand 实例；每 trial 的 Agent、daemon 和观测进程总计请求/限制 1 CPU / 4 GiB，另留系统与 Sandbox overhead；每实例32 GiB gp3系统盘，每 trial 独占32 GiB gp3数据盘，无 GPU。**配对容量仍待验证，不是 Agent 性能结论。** 2026-10-15 的单节点合成 Sandbox 验证使用32 GiB系统盘、8 GiB数据盘，Pod含runtime overhead为1100m/4224Mi，已能运行；这不证明真实Agent或本地模型能容纳。若容量不足，统一提高整个对照分层的规格并重新冻结配置；不能只给 RL 或某款 Agent 单独加资源后报告算法优势。正式执行后发生的 OOM/timeout 保留在任务分母中，不作为静默加配重试的理由。本地模型需求另设硬件分层。
 
 成本账包括模型/embedding/judge、后台修复、EC2、EKS 控制面、闲置预留、EBS/snapshot、对象存储请求与容量、网络/NAT、日志、失败重试和清理滞留。按现行 [费用合同](INTERFACES.md#6-cost-event-contract)分账，不遗漏 infrastructure，也不把被测系统必要 ingestion/修复移出 system_runtime；unknown 不填0。
 

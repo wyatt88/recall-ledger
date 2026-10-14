@@ -1,22 +1,22 @@
 {
   "schema": "recall-ledger.benchmark.publication-check/1",
-  "date": "2026-10-14",
+  "date": "2026-10-15",
   "timezone": "Asia/Shanghai",
   "status": "passed",
-  "scope": "initial_preflight_and_local_model_budget_tools; no Agent benchmark",
-  "base_product_commit": "d513b964d2feb7a1054be38ea5ccf88e0747cf65",
+  "scope": "sandbox implementation and single-node synthetic EKS qualification; no Agent benchmark",
+  "base_product_commit": "878882a2b8ecf65c65014833d9eeabd751422c48",
   "historical_design_check": "DESIGN-CHECK-2026-10-13.json",
-  "historical_hash_scope": "Earlier publication checks remain in Git history. Original research evidence is not overwritten.",
+  "historical_hash_scope": "Earlier publication checks remain in Git history; prior 227 Rust tests are historical, not rerun for this Python-only implementation.",
   "checks": [
     {
       "check": "previous_publication_inputs_at_base_commit",
       "status": "passed",
-      "inputs_verified": 29
+      "inputs_verified": 36
     },
     {
       "check": "strict_json_and_jsonl_parse",
       "status": "passed",
-      "json_documents": 6,
+      "json_documents": 9,
       "jsonl_files": 6,
       "records": 52,
       "duplicate_object_keys_rejected": true
@@ -31,71 +31,61 @@
       "directed_routes": 6
     },
     {
-      "check": "one_trial_per_small_instance_and_separate_budget_categories",
-      "status": "passed",
-      "runtime_qualified": false,
-      "private_execution_budgets_not_embedded": true
-    },
-    {
       "check": "local_markdown_targets",
       "status": "passed",
-      "target_count": 191,
-      "anchors_not_exhaustively_validated": true
+      "target_count": 81,
+      "anchors_not_exhaustively_validated": true,
+      "scope": "docs/benchmark and infra/eks/sandbox Markdown files"
     },
     {
-      "check": "rustfmt_and_locked_clippy_all_targets",
-      "status": "passed"
-    },
-    {
-      "check": "locked_rust_all_targets_tests",
+      "check": "python_sandbox_suite",
       "status": "passed",
-      "tests_passed": 227,
-      "new_budget_integration_tests": 14,
-      "includes_process_concurrency_and_abrupt_exit": true,
-      "platform": "local macOS; Linux CI not observed in this check"
+      "tests_passed": 48,
+      "platform": "local macOS; mocked firewall commands plus real local IPC/HTTP subprocess fixtures"
     },
     {
-      "check": "python_preflight_fixtures",
+      "check": "python_preflight_and_probe_suite",
       "status": "passed",
-      "tests_passed": 13,
-      "uses_mock_commands": true
+      "tests_passed": 26,
+      "includes_local_process_crash_recovery": true
+    },
+    {
+      "check": "eks_synthetic_qualification",
+      "status": "passed_with_limits",
+      "record": "SANDBOX-CHECK.json",
+      "stages": 3,
+      "resources_cleaned_up": true,
+      "not_a_full_final_source_commit_cloud_rerun": true
     },
     {
       "check": "independent_role_review",
-      "status": "completed",
-      "preflight_findings_fixed": [
-        "AWS ExecCredential apiVersion compatibility",
-        "CNI node-agent disabled flag preserved"
-      ],
-      "budget_blocking_findings": 0,
+      "status": "accept_with_limits",
+      "blocking_findings_remaining": 0,
       "not_independent_statistical_evidence": true
-    },
-    {
-      "check": "default_cargo_run_compatibility",
-      "status": "passed",
-      "output": "recall-ledger 0.4.0"
     },
     {
       "check": "publication_payload_hygiene",
       "status": "passed",
-      "files_scanned": 36,
-      "scope": "UTF-8 text, no symlinks, known private target identifiers and credential patterns; not a proof of absence of all sensitive data"
+      "files_scanned": 52,
+      "scope": "UTF-8 text, no symlinks, known current private target identifiers and selected credential patterns; not proof of absence of every sensitive value"
     }
   ],
   "input_file_sha256": {
-    ".github/workflows/ci.yml": "2442dd24f7d9520434177199608af968d249e1ed4fa60e0ef98d2d71472cf881",
+    ".github/workflows/ci.yml": "dfa91270cca7be0f8ad547193f8f70742797a61ca9fac2d26d138b0f26abe15b",
     "Cargo.toml": "f1696a048f34de0d98a0dfdccfb499428860bc7871454c509de7b6ca7cceb85d",
     "README.md": "7302152a856f6f9dc4e5a248ca8d99da6dd7256c3fe371d6369e95748d88bf03",
     "README.zh-CN.md": "4c0e7959863fc0654667f2d42503186651786d0c67ca3d4e5ba2b0aabe639775",
     "docs/TESTING.md": "2837d642f4bd7223e149bcadf90f0bbf7b7e13351ee9b97a76ff2a727d722cc9",
     "docs/benchmark/AGENT-MATRIX.md": "076d9dff1574b16a7ce6d4a03c6f6288dfa120be23cba1c3b5857ce70372a0ee",
     "docs/benchmark/DESIGN-CHECK-2026-10-13.json": "9fd30a8ba08c66e4c1dab79fa326daa86321ab01b525e23eb1e56c7600746d4f",
-    "docs/benchmark/EKS.md": "eafdb03415f67cdd76c9af53d9da594070c15a439ffe32d14d066c6ad2a85856",
+    "docs/benchmark/EKS.md": "67244bd3a79db7051587c2a67cae90dd720af8464f377a3151368c4027fc86fb",
     "docs/benchmark/ENVIRONMENT.md": "688fd3a67d1f1ae96770c525dd127bcdc8664eb45836cb660737d5ceae5604ae",
     "docs/benchmark/INTERFACES.md": "cc7aac9a57ceec0028ef0f9461f70a48d5eb54301e775130b559dffc1fd9913a",
-    "docs/benchmark/PREFLIGHT.md": "518915dc2656f0ea4eed51440211cd2b029268609ffbaf43f34843abc099e451",
-    "docs/benchmark/README.md": "23c623bae8016a5b567faf9da280d07d8ac1d035d8c30acb89fdb24e7457b4cf",
+    "docs/benchmark/PREFLIGHT.md": "099c8287caca6e5810442c8b93e397799b5ded19d9714845a878fb36bea11317",
+    "docs/benchmark/README.md": "e6445ae64bbb6a8e38891bae6a1e069aa18ccb7125413cdacce96ef212a7e214",
     "docs/benchmark/REVIEW.md": "6b4c6f01255df28d101b11cf1f33e985011aa73397cfdae81b891c9d393ec7a6",
+    "docs/benchmark/SANDBOX-CHECK.json": "381cc029852d2ae29897f732b606f36244a6889f7a97102c79ce191241f495d4",
+    "docs/benchmark/SANDBOX-QUALIFICATION.md": "f1e4d46fbf1e29539f0cabb96c72dee8fdd0d4c4b3de991019a953586d022418",
     "docs/benchmark/SCORING.md": "bae6601bed73a3155d613f9f58add67adb9cfbd7d06cd812f011f3b7bf596f30",
     "docs/benchmark/SPEC.md": "b09cd3bfd3fa353e4c269e16c4f31a9bf88f43658de091ce7bdf4b702797cfd4",
     "docs/benchmark/TASKS.md": "466b76ee8ceeeeed1ab1eae8eb66de13efece45003a05a0a2eca156b9ee8f6b2",
@@ -115,29 +105,45 @@
     "docs/benchmark/examples/revision.public.jsonl": "cc307e0fe5cd8e7b0c8d28db59680c8db8643a35f376503ce8b0eec0df2255f6",
     "docs/benchmark/examples/tools.public.json": "6e5d179ef152c8a0195b36948f56432703a9377b4288687e28c94feec3e13108",
     "docs/benchmark/protocol.draft.json": "5959c70dc94022f466dbb3ff12418a6610114730d655aa8d2b14d1d9565c9a04",
+    "infra/eks/sandbox/BOOTSTRAP.md": "ba849d3ef926a76cd7ef2a2203750228896ef3c444ec07c8927b2df02ef3f16c",
+    "infra/eks/sandbox/README.md": "7ad26efd463ea984b037cbd12934e0698dcf970763ceeb36c3482ff3f88b3004",
+    "infra/eks/sandbox/bootstrap.sh": "46843a809e07fcfdb2cb1a4114a0e1db07276026bd07033919b131cf60799794",
+    "infra/eks/sandbox/egress_guard.py": "39885aa7cd88f37579a607e5ba379a165b4fb79d0dea8e2ad8006a6ad8a3fa53",
+    "infra/eks/sandbox/online_fixture.py": "33a46c2faec8d1da13f484b2e902896047799606d57d1050fb3ba6f5297c16f9",
+    "infra/eks/sandbox/peer.py": "9e119ac5909da69d8fcfd0707ae90d19ffc85df44e6e9dc700f321556ad6692f",
+    "infra/eks/sandbox/render.py": "94608cb74847f040e592d8743a29431678b7b8fbed3a7da66dcc1c5d8e8552bf",
+    "infra/eks/sandbox/test_bootstrap.py": "69b04aac6b59b9f23669b273a233fab489f119e870bee46ff5439956774a30fb",
+    "infra/eks/sandbox/test_egress_guard.py": "1ef38eb9d602b6192459deda031ba69d0cbaaaadf44f2e79f26aaf89295e71db",
+    "infra/eks/sandbox/test_online_fixture.py": "8bbc90bcb429cb39640e9a1c67f5b2d27b15b2e5f2cbe70f8c4d1765e6cdeeae",
+    "infra/eks/sandbox/test_render.py": "c9e9226fa4b0d0d750497d8f5bdfffe6988fa999b84d5bcef5fdc1ea6de5df76",
+    "infra/eks/sandbox/versions.json": "de8ac2e2a3701eacf58e55c48a5a1a65dbd8d1b3348d272fe2fd66fbc7c21bb9",
     "src/bin/recall-bench-budget.rs": "cfd20ee4c64883d3900216ab2bc950e8e373ee697320b3e235b329eb78edd273",
     "tests/benchmark_budget.rs": "11a709dff3a10a3dae63bbe6975ed99b8b42773a4d00b1d7f6deda2ccb862187",
     "tools/eks_preflight.py": "ca56f76f20fabbb7ac36e7a40680e9d256c6b9cf9040197df9d43a2e71215349",
-    "tools/tests/test_eks_preflight.py": "aab3ec97e7a76e327052544567ac2512cd83199e31f37e21d65b3a95c327ab3e"
+    "tools/sandbox_probe.py": "9caec49c805ad2622058e8b14a33154717417abbcd8d2850fe70ca2c9f5826f8",
+    "tools/tests/test_eks_preflight.py": "aab3ec97e7a76e327052544567ac2512cd83199e31f37e21d65b3a95c327ab3e",
+    "tools/tests/test_sandbox_probe.py": "33c9d49ce7d97a52324820fe49cb08b23d234a198f38852e0983d30d2230823f"
   },
-  "hash_scope": "Paths relative to repository root; excludes this report. No cloud inventory, kubeconfig or local budget database included.",
+  "hash_scope": "Paths relative to repository root; excludes this manifest. Includes sanitized evidence fingerprints, not raw cloud inventory, kubeconfig or budget database.",
   "benchmark_model_calls": 0,
   "benchmark_runs_executed": 0,
   "grader_assertions_executed": false,
-  "sandbox_deployed": false,
+  "sandbox_deployed_during_qualification": true,
+  "sandbox_currently_deployed": false,
+  "synthetic_runtime_qualification_tested": true,
   "physical_gold_isolation_tested": false,
-  "host_qualification_tested": false,
+  "agent_host_qualification_tested": false,
   "performance_measured": false,
   "formal_protocol_frozen": false,
   "not_validated": [
-    "Agent task outcomes and Native Memory effectiveness",
+    "real Agent task outcomes and Native Memory effectiveness",
     "autonomous admission",
-    "Sandbox isolation and EKS workload lifecycle",
-    "stateful checkpoint equivalence",
+    "IPv6 or cross-node FORWARD packet flows",
+    "actual node reboot or power loss recovery",
+    "stateful checkpoint equivalence and multi-writer fencing",
     "provider gateway and invoice cap enforcement",
-    "per-trial quota and lease fencing",
     "distributed budget service",
-    "AWS cost enforcement",
+    "AWS invoice reconciliation",
     "migration effectiveness",
     "performance and formal statistical power"
   ]

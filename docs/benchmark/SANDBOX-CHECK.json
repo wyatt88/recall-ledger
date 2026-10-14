@@ -1,0 +1,228 @@
+{
+  "schema": "recall-ledger.benchmark.sandbox-qualification/1",
+  "date": "2026-10-15",
+  "timezone": "Asia/Shanghai",
+  "status": "passed_with_explicit_limits",
+  "evidence_class": "original engineering validation executed; not paper replication or E4",
+  "scope": "one dedicated small EKS node; three sequential synthetic phases; no Agent benchmark",
+  "hardware": {
+    "instance_type": "m7i.large",
+    "architecture": "x86_64",
+    "purchase": "On-Demand",
+    "nodes_created": 1,
+    "root_volume_gib": 32,
+    "trial_volume_gib": 8,
+    "volume_type": "gp3",
+    "same_node_pod_replacement": true,
+    "two_trial_fairness_tested": false
+  },
+  "software": {
+    "gvisor_release": "release-20261005.0",
+    "platform": "systrap",
+    "offline_network": "none",
+    "online_network": "sandbox",
+    "ami_release": "1.35.8-20261003",
+    "kernel": "6.12.110-135.202.amzn2023.x86_64",
+    "kubelet": "v1.35.8-eks-3b4a6ca",
+    "containerd": "2.2.7+unknown",
+    "image": "docker.io/library/python@sha256:2ed6491b93cd49272ee6de2b5a38440c3448360322c089fc23e370722d74179d"
+  },
+  "phases": [
+    {
+      "phase": "offline_initial",
+      "status": "passed",
+      "configuration_checks": 9,
+      "job_complete": true,
+      "sqlite_sequence": 1,
+      "sqlite_integrity": [
+        "ok"
+      ],
+      "crashed_child_exit": 73,
+      "uncommitted_rows": 0,
+      "cross_container_tcp": true,
+      "cross_container_unix_0600": true,
+      "probe_names": [
+        "sqlite_persistence_and_crash_recovery",
+        "local_tcp_and_unix",
+        "ipv4_imds_denied",
+        "external_tcp_denied",
+        "kubernetes_api_denied"
+      ]
+    },
+    {
+      "phase": "offline_resume",
+      "status": "passed",
+      "configuration_checks": 9,
+      "job_complete": true,
+      "sqlite_sequence": 2,
+      "sqlite_integrity": [
+        "ok"
+      ],
+      "crashed_child_exit": 73,
+      "uncommitted_rows": 0,
+      "cross_container_tcp": true,
+      "cross_container_unix_0600": true,
+      "probe_names": [
+        "sqlite_persistence_and_crash_recovery",
+        "local_tcp_and_unix",
+        "ipv4_imds_denied",
+        "external_tcp_denied",
+        "kubernetes_api_denied"
+      ]
+    },
+    {
+      "phase": "controlled_online",
+      "status": "passed",
+      "configuration_checks": 9,
+      "job_complete": true,
+      "sqlite_sequence": 3,
+      "sqlite_integrity": [
+        "ok"
+      ],
+      "crashed_child_exit": 73,
+      "uncommitted_rows": 0,
+      "cross_container_tcp": true,
+      "cross_container_unix_0600": true,
+      "probe_names": [
+        "sqlite_persistence_and_crash_recovery",
+        "local_tcp_and_unix",
+        "ipv4_imds_denied",
+        "external_tcp_denied",
+        "kubernetes_api_denied",
+        "additional_deny_0",
+        "allow_canary_0"
+      ]
+    }
+  ],
+  "sqlite_identity_stable": true,
+  "online": {
+    "synthetic_gateway_http_verified": true,
+    "allowed_port": 18080,
+    "denied_listening_port": 18081,
+    "host_positive_control_both_ports": true,
+    "blocked_targets": [
+      "IMDS IPv4",
+      "Kubernetes API",
+      "public IPv4 TCP",
+      "same-host forbidden listening canary port"
+    ],
+    "pod_inbound_listener_port": 18082,
+    "inbound_self_healthcheck": true,
+    "host_initiated_connection_blocked": true,
+    "guard_rule_sets_verified": 6,
+    "drop_and_allow_counters_increased": true,
+    "trusted_current_pod_gate": true,
+    "gate_stayed_closed_on_rule_read_failure": true,
+    "provider_gateway": false,
+    "continuous_guard_controller": false
+  },
+  "negative_admission": {
+    "cases": 3,
+    "api_server_rejected_all": true,
+    "checks": [
+      "missing runtime",
+      "ServiceAccount token automount",
+      "hostPath"
+    ]
+  },
+  "local_tests": {
+    "passed": 74,
+    "sandbox_tests": 48,
+    "preflight_and_probe_tests": 26,
+    "platform": "macOS",
+    "cloud_flow_tests_are_separate": true,
+    "rust_core_changed": false,
+    "rust_tests_rerun": false
+  },
+  "exploratory_failures_preserved": [
+    "provisioning consumed initial Job deadline",
+    "Unix socket mount views were not shared",
+    "CSI logical mount hint unsupported by shim",
+    "iptables-nft missing-chain query failed closed"
+  ],
+  "cleanup": {
+    "checked_at": "2026-10-14T16:49:36.738304+00:00",
+    "test_ec2_state": "terminated",
+    "owned_ebs_volumes_remaining": 0,
+    "owned_ebs_volumes_removed": 2,
+    "sandbox_nodes_remaining": 0,
+    "sandbox_nodeclaims_remaining": 0,
+    "sandbox_namespaces_remaining": 0,
+    "original_nodes_ready": 6,
+    "original_nodes_total": 6,
+    "guard_rules_removed": true
+  },
+  "cost": {
+    "model_calls": 0,
+    "model_cost_usd": 0,
+    "aws_invoice_reconciled": false,
+    "recurring_resources_left": false
+  },
+  "not_validated": [
+    "actual reboot and power loss",
+    "IPv6 packet flows",
+    "cross-node FORWARD packet flows",
+    "arbitrary kernel escape resistance",
+    "two concurrent trial performance fairness",
+    "complete final source commit byte-for-byte cloud rerun",
+    "continuous policy reconciliation",
+    "real Agent execution and Memory effectiveness",
+    "autonomous memory admission",
+    "paid model gateway and distributed cost enforcement",
+    "multi-writer fencing",
+    "formal frozen benchmark and grader"
+  ],
+  "source_boundary": "Runtime evidence is from iterative qualification. Final online fixture also rejects absent/invalid/empty JSON; those post-cloud changes passed local negative tests without recreating EKS resources.",
+  "raw_evidence_sha256": {
+    "ami.json": "5aa45c6f9b1f67fe023a091822a284ed3eb8124e5a6026b694c462e90f398ed3",
+    "audit-pod.json": "286f18440a0fc2a04ac44c27715bb742f61f14e2f0277bdd92194b2c50b53ff6",
+    "bindings.json": "c0837d3b0365085a3f0e25a9b74c327a71c5d1c306156c7f65ef1c0d160390ed",
+    "cleanup-readback.json": "854ffcd4da10b5501f80fff1636d11cbdfaa3f1a3161aa680cc858d697369872",
+    "cleanup-targets.json": "1e5bc8b3627b7b18303c67e699ddc12680cf7068a16e886c7df9ee4e7e312533",
+    "cluster.json": "4577563fdfe40377c0ad5968a257ced0dc4e4ddde5db866d425f956e9102505b",
+    "daemonsets.json": "6b097b3ba30cd4405425ae81ee774657cf5eb6c4d9b2a640269edff8ebde99d4",
+    "deployment-started.json": "aacc1ffde632470831c2f62e693820fce68f3cb452cc22baf2fe3afa2e40b758",
+    "events-initial.json": "817d21ac3081c9a6635b95b8db4c24fcbcf7350c1aa5cd32de3607d7d112eda2",
+    "failed-provisioning-deadline.json": "ed95d75dc2d4435c67bd9f6b037c609fcb4a285cdad567a946a44502cbcb8335",
+    "failure-csi-mount-events.json": "6f05086d1ed6b1041f0d239183a49db99f30d96835118479100126d3e648206b",
+    "failure-mount-job.txt": "52beed4afec770ae5f98eddc857eb16208016637a839cdd48df5c3a574f68150",
+    "failure-mount-log.txt": "d5311dcd5f2ccd72868b7f96121de0561f81b34d7ba5426b87f3bdd2be17bcbe",
+    "guard-cleanup.json": "67bde8e9ea0bea22d27eccab136b6ff22ec5571c8a2455d3a8b595bcee6489b8",
+    "gvisor-release.json": "dc2aa683b51a0da5dc04958cfb38af6936fc400842ec2d931372e39ec6f033c7",
+    "initial-after-hints-log.txt": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "initial-after-hints-pods.txt": "fbb166c531ed8cc443ab4ac3da97c8f09c2e4a301c08b5e3cfb438949ee7941d",
+    "initial-job.json": "d042206cd5d0d374c813e83212178f1fe6d0a0001f971caed594e83c29116b73",
+    "initial-log.json": "aa698021ee8bc3df461fc16256e40bd449b5f4cfe8777da9fdbf158404791151",
+    "initial-pod.json": "44fe8950733c55a0c489d5fef5a6654204cfc673c6d3bc0af0adbd4797178240",
+    "instance-before-cleanup.json": "4082b1e34f70058ceab4f361b8f2395bba91a55903891dc641b02fde1004d986",
+    "iptables-backend-discovery.json": "d94193e6a710966c45a394db218bf5dc215f8390ba3d8d5c2ac459afa3d26b36",
+    "negative-admission.json": "1c83700a94644f422f0909ce30381c975805633da8be3c49679e2f9c30165369",
+    "node-runtime-audit.json": "3cd2692557d5017105aaef91b8609af0de8774cd534e954ccc49b8d2a43f977b",
+    "nodeclaims-current.json": "1ae1200229cd710b9d7ce22f951146b316c894b65ca5a9b3ec54e71daf7158a4",
+    "nodeclasses.json": "319fe17787e0b34f85b5234d98cb60a834948eb6ebe4a78e9312426637c4ab29",
+    "nodes-current.json": "b7f832f89d1e6f8a9ef3861466c2d61d06525db1910b8ef9f1015ce700cf9bad",
+    "nodes.json": "f124bff50ce5c4d75565eef4640b271e06669b24d5c19bc8c253b0c78768ef16",
+    "online-final-job.json": "07ef4fa3a62fd446d7a98096d0f4c83195f5e6b2987c2849eef34c29f736e333",
+    "online-final-log.json": "41485d429de299d3b7f31d21e1cd165a5c3e6c7e6075d2718b4a12429171fc71",
+    "online-final-pod.json": "6158b56be374d2b5f34c04da5f28a1772c6b3ad5bab224f8ac14d36e5f4ee8cd",
+    "online-gated-pod.json": "b0218f4608628142d18798494012b6de1e1ccf4a1535d1baa69c02c3ff1ef1a9",
+    "online-guard-release.json": "7db220c11e63611cd5892d83bda629753db22dd6829b83a65cf576c8b4d407e3",
+    "online-host-audit.json": "223fdf0dd160714885cb989c0ce713e311c90599b20cb9d20fe2c87c5a9687c4",
+    "online-probe-log.jsonl": "730541e03525b6701e3bb6ba74d2d0ef3b31d4fcc5931fc8529ee9cce76cfd69",
+    "online-state.json": "a297dce79023023166b0adb1e1040cb2676f88fc11056e68e148c134ff87c43e",
+    "online-unreleased-gate-log.txt": "365649c998dcf11f4ff6101247607099cbe12fb7005a033876ecd7188a970c8a",
+    "pods-current.json": "3f979897d59ec819f72bcccbf35a1a0093084455ad54507169df3dea351c2c52",
+    "pods-initial.json": "0d7696e8f0bc213a312b5d16294f48798c3c1d12f519d0e4cbd1172b2c164724",
+    "pools.json": "05e6b83ae0c85d314d61744f34db894543ccd807b64a78cf3a3667c2d925bade",
+    "pv.json": "29b23d465a3d3de64462727be9dec5faad096d76b11e808b53da7467fa0f3592",
+    "pvc.json": "e41309f4f6518917aa13e37aaf33bcd3b6fc29428fea77f77cffb84b493b650e",
+    "rendered/foundation.json": "1e710741ff1d20568b0e8857d8acb68060aa26c6f14521c88676413fec782ba4",
+    "rendered/initial.json": "30cfd3433f792faa29dd4737ab509f9631c83a9217cd09fd802dcf7953ef0bcf",
+    "rendered/online.json": "6978626999c59f78e87086e71fd020381cb96b35ffaee680dcaf83be2d17bbbc",
+    "rendered/resume.json": "7d22fda49f5a82266c799b576cc9c3c702953fdb5a0e41b25bf7e79485f74776",
+    "resume-job.json": "659d59afd80b15ec517c5192ac43b8bb51d08845ccb15f4c9925fd6f6a0e69e1",
+    "resume-log.json": "e2220472abcffca41bc8fbe904c1b684c5356268de5483fa8c3824f47c51d27d",
+    "resume-pod.json": "db1b4b4bec721da0d36a85ca45a0212c20ce75877110f8838de4ad9fd9a951b4"
+  },
+  "evidence_scope": "Hashes refer to private raw files; raw account bindings, cluster inventory, private IPs and original logs are not published. Temporary kubeconfig is excluded."
+}

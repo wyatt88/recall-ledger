@@ -2,6 +2,8 @@
 
 日期：2026-10-14。这里提供两个可本地运行的基础工具；完整 Benchmark Controller、Agent driver、自动准入、模型出口和 verifier 尚未实现。工具通过不等于 EKS Sandbox、真实 Agent 或 Memory 效果通过。
 
+后续进展（2026-10-15）：[Sandbox 代码与操作流程](../../infra/eks/sandbox/README.md)已完成独立节点实测，[验收记录](SANDBOX-QUALIFICATION.md)区分合成探针、已修复的失败和未验证边界。它不改变本页 preflight 本身只读、只发现环境的定位。
+
 ## 只读 EKS 发现
 
 依赖 Python 3.9+、AWS CLI 和 kubectl，使用已有有效登录；工具不会自动登录、修改 RBAC、读取 Secret 资源或创建云资源。

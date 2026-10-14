@@ -1,0 +1,27 @@
+{
+  "schema_version": 1,
+  "target": {
+    "operating_system": "Amazon Linux 2023",
+    "kubernetes_minor": "1.35",
+    "containerd_major": 2,
+    "architecture": "x86_64"
+  },
+  "gvisor": {
+    "release": "20261005.0",
+    "github_tag": "release-20261005.0",
+    "archive_url": "https://storage.googleapis.com/gvisor/releases/release/20261005.0/x86_64/gvisor.tar.bz2",
+    "archive_sha512": "79869ae9a589355a46d46fdac068d9a954e741741ffe77c64e38c56ea955498c1cb04e9bce44e1cce5155333e6b76bee72347c6661bb7c78fd2fe3aad198c8fe",
+    "checksum_sources": [
+      "https://github.com/google/gvisor/releases/tag/release-20261005.0",
+      "https://storage.googleapis.com/gvisor/releases/release/20261005.0/x86_64/gvisor.tar.bz2.sha512"
+    ]
+  },
+  "runtime": {
+    "handler": "runsc-offline",
+    "platform": "systrap",
+    "network": "none",
+    "systemd_cgroup": true,
+    "allow_flag_override": false
+  },
+  "runtime_qualification": "pending_separate_deployment_evidence"
+}
