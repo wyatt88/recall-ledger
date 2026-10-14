@@ -2,14 +2,16 @@
 
 日期：2026-10-13，Asia/Shanghai。项目内名称，不宣称已形成公共标准。
 
-**2026-10-14 GitHub 发布说明：**本目录发布设计规格与公开开发样例，并补充[测试环境方案](ENVIRONMENT.md)。没有发布 Benchmark 成绩或可运行的 Benchmark runner。背景审阅记录保留其原始日期和证据边界；本目录规格与统计合同是后续实现入口。
+**2026-10-14 GitHub 发布说明：**本目录发布设计规格与公开开发样例。根据用户后续选择，[测试环境方案](ENVIRONMENT.md)已调整为 EKS 主平台、多 Agent Worker；本机用于开发，真实桌面 App 经外部 Worker 接入。没有发布 Benchmark 成绩或可运行的 Benchmark runner。背景审阅记录保留其原始日期和证据边界；本目录规格与统计合同是后续实现入口。
 
 **交付状态：设计规格；实验未运行，正式协议未冻结。** 目标是公平比较 Agent Native Memory、强原文检索/生命周期基线与 RecallLedger 在实际任务、长期变化、迁移和成本上的差异。规格沿用[已审阅比较原则](background/PROTOCOL.md)，此处进一步定义实现接口、输入样例、配置与判定。
 
 | 文件 | 用途 |
 | --- | --- |
 | [SPEC.md](SPEC.md) | Suite、对照、数据、负载、执行阶段和实现顺序 |
-| [ENVIRONMENT.md](ENVIRONMENT.md) | 本机 Sandbox、真实 App Worker 与可选 EKS 的构建边界 |
+| [ENVIRONMENT.md](ENVIRONMENT.md) | EKS 主平台、本机开发与外部真实 App Worker 的构建边界 |
+| [EKS.md](EKS.md) / [eks-plan.draft.json](eks-plan.draft.json) | EKS 拓扑、运行生命周期、资源与预算待绑定的部署计划 |
+| [AGENT-MATRIX.md](AGENT-MATRIX.md) | 多 Agent 的 Native / RecallLedger / 共存资格与迁移矩阵 |
 | [protocol.draft.json](protocol.draft.json) | 机器可读候选配置、预算上限及未满足的运行门槛 |
 | [INTERFACES.md](INTERFACES.md) | replay、backend/Host driver、trace、cost、verifier 与报告的接口合同 |
 | [TASKS.md](TASKS.md) | 八类任务的具体刺激、正确行为与反例 |
@@ -30,6 +32,8 @@
 - Migration：同一 A→B，对比两套实际迁移流程及各自的 B continuous。
 
 第一个模型 pilot 采用双方相同的 `admitted_events`，为候选 8 个开发 cluster × 2 个 counterfactual 分支 × 4 配置 × 2 生命周期 × 4 checkpoints，即 **512 task slots**。它不含全部 background/model calls，也不是 512 个独立样本。正式 sample size 留空，按开发方差和 power 冻结；pilot 数据尚未构造，执行预算尚未落实。
+
+新增 EKS 多 Agent 计划是独立的 Host qualification 与后续配对路线。候选 3 个 Linux Agent × 3 种 Memory 模式并不代表 9 个配置已经可运行，也不替换上述受控 pilot；真实 raw-conversation 对照仍须完成自动准入和 Native 资格。
 
 ## 2026-10-13 设计阶段边界
 

@@ -22,15 +22,19 @@ replay controller ── isolated backend / Real Host ── sandbox tools / art
 
 `systems.lock.json` 每项至少包含：
 
-`system_id, track, input_mode, host_name, host_version, model_id, model_revision, tokenizer_id, adapter_revision, backend_revision, effective_config_sha256, native_memory_enabled, ownership_policy, admission_policy, retrieval_policy, consolidation_policy, overflow_policy, timeout_policy, observability, qualification_record`。
+`configuration_id, agent_id, system_id, track, input_mode, host_name, host_version, model_id, model_revision, tokenizer_id, adapter_revision, backend_revision, effective_config_sha256, native_memory_enabled, ownership_policy, admission_policy, retrieval_policy, consolidation_policy, overflow_policy, timeout_policy, observability, qualification_record`。
 
 未知值保留 `null` 和原因，不填 `latest` 代替版本。H_NATIVE_* 只能来自真实Host；C_* 不包含真实Native label。claim所需字段无法固定时 downgrade scope 或阻止冻结。
 
+2026-10-14 多 Agent 身份约束：`system_id` 保留 H_* / C_* 的模式含义，**不是跨 Agent 唯一配置主键**。冻结时对单项完整配置锁（不含 configuration_id 本身，以 RFC 8785 规范 JSON 编码）取 SHA-256 作为 `configuration_id`；锁包含 Agent/backend/model/adapter 版本、子 Agent 拓扑及资源/运行时指纹。`agent_id` 是可读 Agent 身份，Controlled 使用明确的 reader 身份。未冻结候选仅有唯一 `candidate_id`，configuration_id 留 null，不能启动。
+
+run、initial state、trace、cost、artifact 路径、migration source/target 和 report join 都必须携带 configuration_id 或唯一指向它的受约束 run_id，不能仅用 H_* 分组。Native/RL 配对按显式配置 ID 列表建立；不同 Agent、模型、版本的配置不得被模式名静默合并。既有 `config_id → system_id` 只是旧字段别名，不等于此新增主键；旧数据仅在 systems lock 可唯一解析时迁入，否则拒绝作为多 Agent 结果。
+
 `run manifest`：
 
-`run_id, attempt, protocol_sha256, analysis_plan_sha256, systems_lock_sha256, data_manifest_sha256, evaluator_revision, cluster_id, history_id, counterfactual_branch, system_id, lifecycle_profile, checkpoint_id, task_event_id, replicate, seed, budget_id, initial_state_id, start_time, terminal_state, failure_reason, response_kind, observation_status, invalidation_reason`。
+`run_id, attempt, protocol_sha256, analysis_plan_sha256, systems_lock_sha256, data_manifest_sha256, evaluator_revision, cluster_id, history_id, counterfactual_branch, configuration_id, agent_id, system_id, lifecycle_profile, checkpoint_id, task_event_id, replicate, seed, budget_id, initial_state_id, start_time, terminal_state, failure_reason, response_kind, observation_status, invalidation_reason`。
 
-每个 initial state 与 system/history绑定；重试生成新 attempt 并引用原run，不能覆盖原日志。
+每个 initial state 与 configuration/history 绑定；重试生成新 attempt 并引用原run，不能覆盖原日志。
 
 `terminal_state` 为 completed/failed/budget_exhausted/infra_invalid/unsupported/not_run；`response_kind` 可为 substantive/refusal/clarification/none；`observation_status` 为 complete/partial/unknown。任务级 timeout/system_error/task_budget_exhausted 是 failed 的原因，不是新的终态。budget_exhausted 专指全局预算停止导致的中断；未开始的任务用 not_run。具体分母处理以 SCORING 为准。
 
@@ -81,7 +85,7 @@ source_event 的自然语言更正本来可以含新值，这是合法输入；�
 
 ## 5. Trace contract
 
-每行 `trace_id, run_id, event_id, span_id, parent_span_id, component, operation, scheduled_ns, started_ns, finished_ns, status, input_ref, output_ref, evidence_refs, error_code, budget_snapshot`。
+每行 `trace_id, run_id, configuration_id, event_id, span_id, parent_span_id, component, operation, scheduled_ns, started_ns, finished_ns, status, input_ref, output_ref, evidence_refs, error_code, budget_snapshot`。
 
 component 可为 capture/extract/admit/store/retrieve/project/model/tool/repair/transfer/evaluator。
 
@@ -104,7 +108,9 @@ model trace优先记录实际provider input/output及usage；若只能看到hook
 
 唯一收费/资源事件 `cost_event_id`，包括：
 
-`budget_id, run_id, cluster_id, history_id, system_id, originating_event_id, job_id, stage, ledger, operation, provider_request_id, started_ns, finished_ns, input_tokens, cached_input_tokens, output_tokens, embedding_tokens, cpu_seconds, gpu_seconds, peak_rss_bytes, disk_delta_bytes, wall_seconds, human_seconds, billed_amount, currency, price_snapshot_id, accounting_status, linked_checkpoint_ids`。
+`budget_id, run_id, cluster_id, history_id, configuration_id, agent_id, system_id, originating_event_id, job_id, stage, ledger, operation, provider_request_id, started_ns, finished_ns, input_tokens, cached_input_tokens, output_tokens, embedding_tokens, cpu_seconds, gpu_seconds, peak_rss_bytes, disk_delta_bytes, wall_seconds, human_seconds, billed_amount, currency, price_snapshot_id, accounting_status, linked_checkpoint_ids`。
+
+Controller、EKS 控制面等共享 infrastructure 费用的 configuration_id 可为空，但必须标记 shared 并保留分摊合同；单一被测配置的费用不得用 null 绕过归属。迁移费用同时引用 source/target configuration_id，不能因被两端观察而重复入账。
 
 计量注意：
 

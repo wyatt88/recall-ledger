@@ -152,3 +152,17 @@
 2. **P3 消融：**检索方式、增量修复与按需/full rebuild、evidence 与模型摘要、同一 backend 的文件投影与动态交付四个轴，均说明固定条件和完整成本。选格/预算尚待开发校准，不能自动增加 512-slot pilot；正式机制结论须在封存前确定比较族。没有发现与主要对照、统计家族或未执行边界的新冲突。
 
 该窄审只确认文字与机器配置的设计一致性；未评估实际消融实现、往返执行结果或统计功效。此前的“可交工程实现、正式验证尚未验收”结论保持不变。
+
+## 2026-10-14：EKS 主平台与多 Agent 矩阵增量审阅
+
+用户选择 EKS 作为主测试平台。Agent 岗位审阅现有 Host adapter 与官方运行入口，系统岗位设计 EKS 存储/作业合同，评估/反方岗位对新增文档和机器配置只读复核，主代理整合；均为 AI 岗位。
+
+本次发现并在设计层修正三项：
+
+1. H_* 是 Memory 模式名，会在不同 Agent 复用；仅靠 system_id 会使状态与费用主键碰撞。新增冻结后的唯一 configuration_id，贯穿 run、state、trace、cost、迁移两端与报告，未冻结候选仅分配 candidate_id 且禁止执行。
+2. 文档的 unsupported 与机器字段 pending 不一致。改为 support_status 与 qualification 分离：3 个 Native 候选待资格检查，6 个自主 RL 候选因当前实现缺口不支持，所有资格均未执行；从 Codex integrated 移除仅适用于共存的 blocker。
+3. Native-only 不应被要求通过 RL admission/daemon gate，也不能启动 RL sidecar。已明确模式适用性、原生状态独立和同等总 Worker 资源额度。
+
+复核确认原 512 slots / 8 clusters 的受控 pilot 数量与输入模式未改；新增 9 个候选配置、6 条有向迁移和 roundtrip 不自动扩大样本或预算。跨 Agent 模型/拓扑差异须分层，同 Host 先配对；迁移仍使用同目的端 continuous 与绝对质量。
+
+没有新的设计发布阻断项。尚无 runner、grader、真实 Agent/EKS、隔离、预算强制或性能验收；设计一致性通过不等于运行资格或效果通过。

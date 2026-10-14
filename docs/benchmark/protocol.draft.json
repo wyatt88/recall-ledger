@@ -21,7 +21,11 @@
     "scoring_authority": "SCORING.md",
     "analysis_plan": "analysis-plan.json",
     "development_examples": "examples/manifest.json",
-    "independent_review": "REVIEW.md"
+    "independent_review": "REVIEW.md",
+    "environment": "ENVIRONMENT.md",
+    "eks_deployment_plan": "eks-plan.draft.json",
+    "eks_architecture": "EKS.md",
+    "agent_matrix": "AGENT-MATRIX.md"
   },
   "delivery_scope": {
     "allowed": [
@@ -395,5 +399,14 @@
       "explicit_execution_resource_authorization",
       "independent_frozen_protocol_review"
     ]
+  },
+  "execution_infrastructure": {
+    "primary_orchestrator": "eks",
+    "selected_at": "2026-10-14",
+    "selection": "user_requested",
+    "plan": "eks-plan.draft.json",
+    "status": "design_only_unbound",
+    "external_desktop_workers": true,
+    "host_matrix_does_not_replace_controlled_pilot": true
   }
 }

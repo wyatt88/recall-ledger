@@ -1,0 +1,428 @@
+{
+  "schema": "recall-ledger.benchmark.eks-plan/0.1",
+  "created_at": "2026-10-14",
+  "timezone": "Asia/Shanghai",
+  "status": "design_only_unbound",
+  "evidence_status": "H0",
+  "execution_enabled": false,
+  "deployment_performed": false,
+  "benchmark_runs_executed": 0,
+  "primary_orchestrator": "eks",
+  "deployment_preference": "user_selected_eks_first",
+  "purpose": "Qualify and compare multiple real Agent runtimes with their native memory and RecallLedger, then test directed handoffs.",
+  "documents": {
+    "environment": "ENVIRONMENT.md",
+    "eks_architecture": "EKS.md",
+    "agent_matrix": "AGENT-MATRIX.md",
+    "benchmark_protocol": "protocol.draft.json",
+    "analysis_authority": "analysis-plan.json"
+  },
+  "deployment_target": {
+    "aws_profile": null,
+    "region": null,
+    "cluster_name": null,
+    "existing_or_new": null,
+    "kubernetes_version": null,
+    "node_architecture": null,
+    "runtime_class": null,
+    "runtime_qualification_record": null,
+    "ebs_csi_qualification_record": null
+  },
+  "execution_budget": {
+    "authorization_status": "not_bound",
+    "currency": null,
+    "total_cloud_and_model_spend_limit": null,
+    "max_wall_clock_seconds": null,
+    "max_model_tokens": null,
+    "max_concurrent_trials_candidate": 2,
+    "parallelism_is_not_authorization": true,
+    "includes": [
+      "all_agent_and_subagent_model_calls",
+      "native_background_memory",
+      "extraction_and_admission",
+      "embedding_retrieval_summary_repair",
+      "failure_retry_and_migration_rebuild",
+      "grading",
+      "controller_and_worker_compute",
+      "storage_snapshots",
+      "network_nat_and_egress",
+      "logs_and_artifact_retention"
+    ],
+    "independent_of_prior_controlled_pilot_candidate_budget": true,
+    "unknown_cost_policy": "report unknown; do not infer zero or cost superiority"
+  },
+  "prior_controlled_pilot": {
+    "protocol_reference": "protocol.draft.json#/pilot",
+    "task_slots": 512,
+    "independent_clusters": 8,
+    "changed_by_this_plan": false,
+    "host_matrix_slots_and_formal_n": null
+  },
+  "agent_candidates": [
+    {
+      "id": "opencode",
+      "name": "OpenCode",
+      "runtime": "linux_cli_or_server",
+      "execution_backend": "eks",
+      "version": null,
+      "image_digest": null,
+      "driver_implemented": false,
+      "qualification_record": null,
+      "model_lock": null,
+      "subagent_topology_lock": null,
+      "reviewed_candidate_version": "v1.18.35"
+    },
+    {
+      "id": "codex_cli",
+      "name": "Codex CLI",
+      "runtime": "linux_cli",
+      "execution_backend": "eks",
+      "version": null,
+      "image_digest": null,
+      "driver_implemented": false,
+      "qualification_record": null,
+      "model_lock": null,
+      "subagent_topology_lock": null,
+      "reviewed_candidate_version": null
+    },
+    {
+      "id": "kirocrew",
+      "name": "KiroCrew",
+      "runtime": "linux_gateway",
+      "execution_backend": "eks",
+      "version": null,
+      "image_digest": null,
+      "driver_implemented": false,
+      "qualification_record": null,
+      "model_lock": null,
+      "subagent_topology_lock": null,
+      "reviewed_candidate_version": "950be416840623da0cda74be10e3acfee94e434f"
+    }
+  ],
+  "external_host_candidates": [
+    {
+      "id": "chatgpt_local_app",
+      "name": "local ChatGPT App",
+      "execution_backend": "external_desktop_worker",
+      "target_platform": "macos",
+      "qualification_record": null,
+      "cli_results_are_app_results": false
+    },
+    {
+      "id": "codex_desktop",
+      "name": "Codex desktop App",
+      "execution_backend": "external_desktop_worker",
+      "target_platform": "macos",
+      "qualification_record": null,
+      "cli_results_are_app_results": false
+    }
+  ],
+  "host_matrix": {
+    "candidate_cell_count": 9,
+    "qualified_cell_count": 0,
+    "raw_conversation_required": true,
+    "cells": [
+      {
+        "agent_id": "opencode",
+        "system_id": "H_NATIVE_TUNED",
+        "runnable": false,
+        "qualification": "not_attempted",
+        "blockers": [
+          "host_image_and_version_not_locked",
+          "driver_unimplemented",
+          "native_baseline_not_qualified"
+        ],
+        "manual_gold_assisted_admission_allowed": false,
+        "support_status": "pending_qualification",
+        "candidate_id": "opencode--h_native_tuned",
+        "configuration_id": null
+      },
+      {
+        "agent_id": "opencode",
+        "system_id": "H_RL_INTEGRATED",
+        "runnable": false,
+        "qualification": "not_attempted",
+        "blockers": [
+          "host_image_and_version_not_locked",
+          "driver_unimplemented",
+          "native_baseline_not_qualified",
+          "autonomous_admission_unimplemented",
+          "long_term_fact_ownership_not_qualified"
+        ],
+        "manual_gold_assisted_admission_allowed": false,
+        "support_status": "unsupported_current_implementation",
+        "candidate_id": "opencode--h_rl_integrated",
+        "configuration_id": null
+      },
+      {
+        "agent_id": "opencode",
+        "system_id": "H_NATIVE_PLUS_RL",
+        "runnable": false,
+        "qualification": "not_attempted",
+        "blockers": [
+          "host_image_and_version_not_locked",
+          "driver_unimplemented",
+          "native_baseline_not_qualified",
+          "autonomous_admission_unimplemented"
+        ],
+        "manual_gold_assisted_admission_allowed": false,
+        "support_status": "unsupported_current_implementation",
+        "candidate_id": "opencode--h_native_plus_rl",
+        "configuration_id": null
+      },
+      {
+        "agent_id": "codex_cli",
+        "system_id": "H_NATIVE_TUNED",
+        "runnable": false,
+        "qualification": "not_attempted",
+        "blockers": [
+          "host_image_and_version_not_locked",
+          "driver_unimplemented",
+          "native_baseline_not_qualified"
+        ],
+        "manual_gold_assisted_admission_allowed": false,
+        "support_status": "pending_qualification",
+        "candidate_id": "codex_cli--h_native_tuned",
+        "configuration_id": null
+      },
+      {
+        "agent_id": "codex_cli",
+        "system_id": "H_RL_INTEGRATED",
+        "runnable": false,
+        "qualification": "not_attempted",
+        "blockers": [
+          "host_image_and_version_not_locked",
+          "driver_unimplemented",
+          "native_baseline_not_qualified",
+          "autonomous_admission_unimplemented"
+        ],
+        "manual_gold_assisted_admission_allowed": false,
+        "support_status": "unsupported_current_implementation",
+        "candidate_id": "codex_cli--h_rl_integrated",
+        "configuration_id": null
+      },
+      {
+        "agent_id": "codex_cli",
+        "system_id": "H_NATIVE_PLUS_RL",
+        "runnable": false,
+        "qualification": "not_attempted",
+        "blockers": [
+          "host_image_and_version_not_locked",
+          "driver_unimplemented",
+          "native_baseline_not_qualified",
+          "autonomous_admission_unimplemented",
+          "additive_installer_not_qualified"
+        ],
+        "manual_gold_assisted_admission_allowed": false,
+        "support_status": "unsupported_current_implementation",
+        "candidate_id": "codex_cli--h_native_plus_rl",
+        "configuration_id": null
+      },
+      {
+        "agent_id": "kirocrew",
+        "system_id": "H_NATIVE_TUNED",
+        "runnable": false,
+        "qualification": "not_attempted",
+        "blockers": [
+          "host_image_and_version_not_locked",
+          "driver_unimplemented",
+          "native_baseline_not_qualified"
+        ],
+        "manual_gold_assisted_admission_allowed": false,
+        "support_status": "pending_qualification",
+        "candidate_id": "kirocrew--h_native_tuned",
+        "configuration_id": null
+      },
+      {
+        "agent_id": "kirocrew",
+        "system_id": "H_RL_INTEGRATED",
+        "runnable": false,
+        "qualification": "not_attempted",
+        "blockers": [
+          "host_image_and_version_not_locked",
+          "driver_unimplemented",
+          "native_baseline_not_qualified",
+          "autonomous_admission_unimplemented",
+          "gateway_wiring_unimplemented",
+          "native_v2_ownership_not_qualified"
+        ],
+        "manual_gold_assisted_admission_allowed": false,
+        "support_status": "unsupported_current_implementation",
+        "candidate_id": "kirocrew--h_rl_integrated",
+        "configuration_id": null
+      },
+      {
+        "agent_id": "kirocrew",
+        "system_id": "H_NATIVE_PLUS_RL",
+        "runnable": false,
+        "qualification": "not_attempted",
+        "blockers": [
+          "host_image_and_version_not_locked",
+          "driver_unimplemented",
+          "native_baseline_not_qualified",
+          "autonomous_admission_unimplemented",
+          "gateway_wiring_unimplemented",
+          "native_v2_ownership_not_qualified"
+        ],
+        "manual_gold_assisted_admission_allowed": false,
+        "support_status": "unsupported_current_implementation",
+        "candidate_id": "kirocrew--h_native_plus_rl",
+        "configuration_id": null
+      }
+    ],
+    "unsupported_configuration_policy": "record unsupported until implementation and qualification; never simulate branded native memory with a generic MD backend"
+  },
+  "comparison_policy": {
+    "primary_within_each_agent": [
+      "H_RL_INTEGRATED",
+      "H_NATIVE_TUNED"
+    ],
+    "secondary_additive_within_each_agent": [
+      "H_NATIVE_PLUS_RL",
+      "H_NATIVE_TUNED"
+    ],
+    "same_host_model_tools_and_subagent_topology_within_pair": true,
+    "same_total_worker_resources_and_durability_within_pair": true,
+    "cross_agent_model_mismatch": "separate product-configuration strata, not a pure memory mechanism claim",
+    "ownership_conflict_and_refresh_contract_required": true,
+    "assisted_admission_reported_separately_with_human_cost": true,
+    "qualified_system_timeout_or_oom": "retain in task denominator",
+    "infrastructure_invalidity": "predefined blinded adjudication and symmetric matched-cell handling"
+  },
+  "migration": {
+    "candidate_directed_routes": [
+      {
+        "source_agent": "opencode",
+        "destination_agent": "codex_cli"
+      },
+      {
+        "source_agent": "opencode",
+        "destination_agent": "kirocrew"
+      },
+      {
+        "source_agent": "codex_cli",
+        "destination_agent": "opencode"
+      },
+      {
+        "source_agent": "codex_cli",
+        "destination_agent": "kirocrew"
+      },
+      {
+        "source_agent": "kirocrew",
+        "destination_agent": "opencode"
+      },
+      {
+        "source_agent": "kirocrew",
+        "destination_agent": "codex_cli"
+      }
+    ],
+    "candidate_directed_route_count": 6,
+    "native_best_feasible_and_rl_routes_qualified_separately": true,
+    "one_way_reference": "same destination B continuous",
+    "round_trip_reference": "same origin A continuous with identical intermediate corrections and withdrawals",
+    "absolute_destination_quality_required": true,
+    "route_replicas_are_independent_samples": false,
+    "comparison_family_and_sample_size": null,
+    "requires_source_and_target_configuration_ids": true
+  },
+  "worker_state": {
+    "unit": [
+      "cluster_id",
+      "history_id",
+      "counterfactual_branch",
+      "configuration_id",
+      "lifecycle_profile",
+      "replicate"
+    ],
+    "reset_per_message": false,
+    "recall_ledger_location": "same_worker_pod_sidecar_for_rl_modes_only",
+    "db_shared_between_trials": false,
+    "data_volume_candidate": "dedicated_ebs_gp3_rwo_filesystem_per_trial",
+    "active_sqlite_wal_on_network_filesystem": false,
+    "socket_requires_matching_effective_uid": true,
+    "probe_can_write_back_to_main_history": false,
+    "restore_is_equivalent_checkpoint_clone": false,
+    "job_duplicate_start_fenced_by_controller_lease": true,
+    "job_completion_requires_trace_and_cost_drain": true
+  },
+  "trust_boundary": {
+    "controller_and_gold_outside_untrusted_worker": true,
+    "worker_receives_future_events": false,
+    "worker_receives_gold": false,
+    "worker_receives_raw_provider_credentials": false,
+    "provider_gateway_required_or_documented_alternative_qualification": true,
+    "worker_scoped_run_token": "short_lived_and_trial_scoped",
+    "private_grader_returns_feedback_to_history": false,
+    "namespace_alone_is_isolation_proof": false
+  },
+  "implementation_milestones": [
+    {
+      "id": "EKS0",
+      "name": "offline_contract_and_manifest_validation",
+      "model_calls": 0,
+      "completed": false
+    },
+    {
+      "id": "EKS1",
+      "name": "eks_no_model_qualification",
+      "model_calls": 0,
+      "completed": false
+    },
+    {
+      "id": "EKS2",
+      "name": "one_agent_admission_and_native_paired_qualification",
+      "completed": false
+    },
+    {
+      "id": "EKS3",
+      "name": "qualified_multi_agent_and_directed_migration_pilot",
+      "completed": false
+    },
+    {
+      "id": "EKS4",
+      "name": "freeze_new_sealed_dataset_budget_and_analysis_then_execute",
+      "completed": false
+    }
+  ],
+  "start_requirements": [
+    "selected_cluster_and_resource_ownership",
+    "explicit_execution_budget",
+    "worker_images_and_agent_versions_locked",
+    "controller_driver_grader_implemented",
+    "state_isolation_and_consistent_clone_qualified",
+    "provider_access_budget_enforcement_and_call_accounting_qualified",
+    "native_memory_effective_config_readback",
+    "autonomous_admission_for_raw_conversation_rl_modes",
+    "independent_data_and_analysis_freeze_for_confirmatory_claims"
+  ],
+  "resource_candidates": {
+    "max_concurrent_trials": 2,
+    "per_trial_total_vcpu": 4,
+    "per_trial_total_memory_gib": 8,
+    "per_trial_gp3_gib": 32,
+    "gpu": false,
+    "includes_agent_daemon_and_observer_overhead": true,
+    "node_system_and_sandbox_overhead_additional": true,
+    "native_only_does_not_start_recall_ledger": true,
+    "same_total_trial_resource_budget_across_memory_modes": true,
+    "measured_or_authorized": false
+  },
+  "configuration_identity": {
+    "system_id_is_memory_mode_not_global_primary_key": true,
+    "immutable_key": "configuration_id",
+    "generation": "sha256 of RFC 8785 canonical locked configuration excluding configuration_id",
+    "pre_freeze_key": "candidate_id",
+    "unfrozen_candidates_may_execute": false,
+    "used_by": [
+      "run",
+      "initial_state",
+      "trial",
+      "trace",
+      "cost",
+      "artifact_path",
+      "migration_source_and_target",
+      "report_join"
+    ],
+    "legacy_config_id_alias_is_not_configuration_id": true
+  }
+}

@@ -1,17 +1,19 @@
-# Benchmark 测试环境：先建 Sandbox，再按规模引入 EKS
+# Benchmark 测试环境：EKS 主平台与多 Agent Worker
 
 日期：2026-10-14，Asia/Shanghai。状态：**H0 实施设计，环境未部署，Benchmark 未运行。**
 
-建议第一版采用“可信 Controller + 可替换 Worker”架构。Controlled Harness 先在独立 Linux VM 内运行，容器负责依赖打包和资源限制；macOS 原生 App 用独立 Mac 测试环境。EKS 是后续 Linux 批量调度后端，不是第一版前置依赖。
+按用户本轮选择，**EKS 是首版集成与批量测试的主平台**。采用“可信 Controller + 可替换 Worker”架构：Linux Agent 与 RecallLedger 在 EKS Worker 内就近运行，真实桌面 App 通过同一调度合同接入外部 Worker。本机只承担开发、静态检查与快速重放，不再作为主验收平台。
+
+此前“先独立 VM、规模扩大后再引入 EKS”的建议已被本次部署选择取代；隔离、真实 Host 与公平配对要求继续适用。详见 [EKS 实施设计](EKS.md)、[Agent 测试矩阵](AGENT-MATRIX.md)及[机器可读部署计划](eks-plan.draft.json)。这些文件尚不是可执行的部署器或已运行的实验。
 
 ## 1. 三类环境各自负责什么
 
 | 环境 | 用途 | 不应据此声称 |
 | --- | --- | --- |
 | 本机临时目录与模拟接口 | P0 schema、事件重放、预算账、评分器正负控 | 完成模型/Agent 效果或隔离验收 |
-| 独立 Linux VM + 容器 Worker | Controlled Harness、CLI/daemon 集成、故障注入 | 测过 macOS App 的 Native Memory |
+| EKS 专用 Linux Worker + 经资格验证的隔离运行时 | Controlled Harness、多 Agent CLI/Gateway 与 daemon 集成、故障注入、批量对照 | 普通 Pod/namespace 自动保证 gold 隔离；测过桌面 App Native Memory |
 | 独立 macOS 测试用户/profile；必要时专用 Mac 或经资格检查的 macOS VM | 本地 ChatGPT App/Codex 等真实 App 的 session、Native Memory、压缩和接手 | Linux CLI 与桌面 App 等价、单独换目录就隔离了账号记忆 |
-| 可选 EKS Worker | 已跑通的 Linux 作业并行、回收、日志/产物收集 | Kubernetes namespace 自动保证 gold 隔离或降低测量偏差 |
+| 本机 VM/容器 | EKS 镜像开发、接口调试、快速结构检查 | 本地通过等于 EKS 或真实 Agent 场景通过 |
 
 真实 App 的测试账号、服务端 Memory、同步与后台任务也属于初态，不能只清本地文件。若无法隔离这些状态或固定版本，保留黑盒产品观察范围，不能进入依赖这些条件的正式机制比较。macOS VM 的可运行性、授权和 App 行为必须先核验，不能预设可用。
 
@@ -37,7 +39,7 @@ Worker 仅能读取当前公开 prefix、自己的合法状态和业务工具。
 
 ## 3. 长期历史的状态单位
 
-一次状态空间绑定 `cluster_id / history_id / counterfactual_branch / system_id / lifecycle_profile / replicate`，运行整段历史。**不能每条消息重建空 Sandbox**，否则测不到长期 Memory。
+一次状态空间绑定 `cluster_id / history_id / counterfactual_branch / configuration_id / lifecycle_profile / replicate`，运行整段历史。configuration_id 唯一锁定 Agent、Memory 模式及版本，不能只用重复的 H_* 模式名；详见 [配置身份合同](INTERFACES.md#2-配置与-manifest)。**不能每条消息重建空 Sandbox**，否则测不到长期 Memory。
 
 每个 checkpoint 在该系统自己的隔离副本上执行 probe；不能把 RecallLedger 的成熟状态复制给 Native，也不能在不同反事实分支间复用热会话。probe 的答案、生成文件和诊断反馈不进入后续主历史。无法 clone 的 Host 按固定 prefix 从干净初态重放，费用和状态等价性单列。
 
@@ -58,9 +60,9 @@ Linux 容器方案可用同一 Worker 的 Agent 容器和 RecallLedger daemon si
 
 当前 [restore 实现](../../src/recovery.rs)还清理旧 receipts/change events、使 prepared jobs 失效，并重置已租用的维护任务、递增 generation。因此 restore 不能直接充当等价 checkpoint clone；将其作为恢复干预单列。普通 probe 克隆必须验证身份、队列与 lease 等语义是否按原协议保留。
 
-## 5. 什么情况下才上 EKS
+## 5. EKS 首轮如何落地
 
-在 Linux runner、判分、预算停止、状态恢复和隔离已验证后，若重复作业量、排队时间或多机资源需求成为瓶颈，再接 EKS。512 task slots 不是512个同时运行的 Pod，也不是确定的资源费用。
+先在选定 EKS 集群完成无模型调用的环境资格检查，再执行获准预算内的少量真实 Agent 作业，通过后增加并行。512 task slots 是原受控 pilot 的设计数量，不是512个同时运行的 Pod，也不自动变成多 Agent 实验的样本量。
 
 拟议 EKS 后端：
 
@@ -71,7 +73,9 @@ Linux 容器方案可用同一 Worker 的 Agent 容器和 RecallLedger daemon si
 5. Controller/评分器拥有独立存储和身份。需要对象存储时，gold 与 Worker 可写产物分权限；只准写本试验前缀，不能列出/读取其他结果。
 6. EKS 只调度 Linux Worker；macOS Worker 可接同一队列与结果协议，仍在 macOS 执行，不伪装成 EKS Pod。
 
-没有必要第一版就实现完整 operator、弹性 GPU 池或多集群。先实现 `LocalWorker` 与 `MacHostWorker` 的相同执行合同，后续 `EKSWorker` 复用 run manifest、事件流、trace 和费用模型。
+首版实现 `EKSWorker`、各 Agent driver 和外部 `MacHostWorker` 的相同执行合同；`LocalWorker` 用于开发。先用标准 Job 与固定资源池，不要求先实现完整 operator、弹性 GPU 池或多集群。统一 run manifest、事件流、trace 与费用模型，但不同 Host 的状态、压缩、Memory 和迁移语义仍须分别核验。
+
+候选 Linux 首批是 OpenCode、Codex CLI、KiroCrew。每个 Agent 分别比较正常调优的 Native、RecallLedger 接管长期事实，以及 Native + RecallLedger 共存；三类的支持条件见矩阵。当前 adapter 的 pending capture 不等于自动准入，未完成资格的配置不得生成“可运行”或“胜出”标记。
 
 ## 6. 性能测试避免部署位置混杂
 
@@ -87,13 +91,13 @@ S4 尽量使用稳定专用资源，固定节点数与到达率；记录 CPU thr
 
 实施顺序为：
 
-1. 本机 Controller、独立 verifier、模拟 Worker，验证 P0。
-2. 固定 Linux VM 镜像，跑通 Controlled Harness 的隔离与计量。
-3. 小型 admitted-events pilot 校准时间/费用，再决定并行度。
-4. 独立 Mac 做真实 App qualification 与 Native 对照。
-5. 需要批量扩展时增加 EKS 后端，重新核验相同合同。
+1. 本机完成 Controller、独立 verifier、模拟 driver 的 P0；锁定 EKS 集群、资源与预算。
+2. 在 EKS 验证镜像、卷、socket、侧车退出、状态恢复、隔离与计量，不调用真实模型。
+3. 对每个 Linux Agent 分别执行 headless/session/Memory/准入资格检查；优先跑通一个完整配对。
+4. 扩展至已合格的多 Agent 配对与有向迁移；另接外部 Mac Worker 做真实 App 对照。
+5. 在冻结独立数据、模型、成本和统计方案后批量执行；性能测量期间固定资源配置。
 
-本轮只补充环境设计与源码/官方文档核查；没有创建集群、修改云账号、配置 Sandbox、运行模型或执行 Host 测试。
+当前集群与执行预算尚未绑定，runner/grader 尚未实现。已准备的部署计划明确 `execution_enabled=false`；没有创建集群、修改云账号、配置 Sandbox、运行模型或执行 Host 测试。该状态不影响 EKS 作为主平台的架构选择。
 
 ## 一手依据与读取范围
 
