@@ -9,11 +9,13 @@ use clap::{Args, Parser, Subcommand};
 use rusqlite::{params, Connection, OpenFlags, OptionalExtension, TransactionBehavior};
 use serde_json::{json, Value};
 use std::fs;
+use std::ops::{Deref, DerefMut};
 use std::path::{Path, PathBuf};
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 const APPLICATION_ID: i64 = 0x524c4244;
 const SCHEMA: i64 = 1;
+const LOCK_TIMEOUT: Duration = Duration::from_secs(30);
 
 #[derive(Parser)]
 #[command(
@@ -219,15 +221,27 @@ fn private_file(path: &Path, required: bool) -> Result<()> {
             Ok(())
         }
         Err(e) if e.kind() == std::io::ErrorKind::NotFound && !required => Ok(()),
-        _ => Err(error(
+        Ok(meta) => Err(error(
             "invalid_path",
-            "Database and sidecars must be owner-owned regular files with mode 0600 and one link.",
+            format!(
+                "Database and sidecars must be owner-owned regular files with mode 0600 and one link \
+                 (regular={}, symlink={}, owner={}, mode={:04o}, links={}).",
+                meta.is_file(),
+                meta.file_type().is_symlink(),
+                meta.uid() == unsafe { libc::geteuid() },
+                meta.mode() & 0o777,
+                meta.nlink()
+            ),
+        )),
+        Err(e) => Err(error(
+            "invalid_path",
+            format!("Cannot validate database or sidecar metadata: {e}"),
         )),
     }
 }
 
 #[cfg(unix)]
-fn prepare_path(path: &Path, create: bool) -> Result<PathBuf> {
+fn prepare_path(path: &Path, create: bool) -> Result<(PathBuf, fs::File)> {
     use std::os::unix::fs::{DirBuilderExt, MetadataExt, OpenOptionsExt};
     if path.as_os_str().is_empty() || path == Path::new(":memory:") || path.file_name().is_none() {
         return Err(error(
@@ -257,6 +271,9 @@ fn prepare_path(path: &Path, create: bool) -> Result<PathBuf> {
         ));
     }
     let absolute = parent.canonicalize()?.join(path.file_name().unwrap());
+    // Serialize the complete connection lifetime, including SQLite's last-close
+    // sidecar cleanup. The separate inode must never be unlinked or be the DB.
+    let operation_lock = acquire_operation_lock(&absolute, LOCK_TIMEOUT)?;
     if create {
         match fs::OpenOptions::new()
             .read(true)
@@ -277,24 +294,134 @@ fn prepare_path(path: &Path, create: bool) -> Result<PathBuf> {
         sidecar.push(suffix);
         private_file(Path::new(&sidecar), false)?;
     }
-    Ok(absolute)
+    Ok((absolute, operation_lock))
 }
 
 #[cfg(not(unix))]
-fn prepare_path(_path: &Path, _create: bool) -> Result<PathBuf> {
+fn prepare_path(_path: &Path, _create: bool) -> Result<(PathBuf, fs::File)> {
     Err(error(
         "unsupported_platform",
         "This version requires Unix owner-only filesystem permissions.",
     ))
 }
 
-fn open(path: &Path, initialize: bool) -> Result<Connection> {
-    let path = prepare_path(path, initialize)?;
+#[cfg(unix)]
+fn acquire_operation_lock(path: &Path, timeout: Duration) -> Result<fs::File> {
+    use std::os::unix::fs::{MetadataExt, OpenOptionsExt};
+    let mut lock_path = path.as_os_str().to_os_string();
+    lock_path.push(".operation.lock");
+    let lock_path = Path::new(&lock_path);
+    private_file(lock_path, false)?;
+    let file = fs::OpenOptions::new()
+        .read(true)
+        .write(true)
+        .create(true)
+        .truncate(false)
+        .mode(0o600)
+        .custom_flags(libc::O_NOFOLLOW | libc::O_CLOEXEC | libc::O_NONBLOCK)
+        .open(lock_path)
+        .map_err(|e| error("invalid_path", format!("Cannot open operation lock: {e}")))?;
+    let validate = || -> Result<()> {
+        private_file(lock_path, true)?;
+        let opened = file.metadata()?;
+        let named = fs::symlink_metadata(lock_path)?;
+        if !opened.is_file()
+            || opened.uid() != unsafe { libc::geteuid() }
+            || opened.mode() & 0o777 != 0o600
+            || opened.nlink() != 1
+            || opened.dev() != named.dev()
+            || opened.ino() != named.ino()
+        {
+            return Err(error(
+                "invalid_path",
+                "Operation lock must remain the same owner-only regular file with one link.",
+            ));
+        }
+        Ok(())
+    };
+    validate()?;
+    let deadline = Instant::now() + timeout;
+    loop {
+        match fs2::FileExt::try_lock_exclusive(&file) {
+            Ok(()) => break,
+            Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+                let remaining = deadline.saturating_duration_since(Instant::now());
+                if remaining.is_zero() {
+                    return Err(error(
+                        "operation_lock_timeout",
+                        "Timed out waiting for another local budget operation.",
+                    ));
+                }
+                std::thread::sleep(remaining.min(Duration::from_millis(10)));
+            }
+            Err(e) => return Err(e.into()),
+        }
+    }
+    // A changed/unlinked lock inode must not admit a second independent owner.
+    validate()?;
+    Ok(file)
+}
+
+struct Database {
+    // Rust drops fields in declaration order: close SQLite (and its sidecars)
+    // before releasing the operation lock. Keep this ordering.
+    connection: Connection,
+    _operation_lock: fs::File,
+}
+
+impl Deref for Database {
+    type Target = Connection;
+
+    fn deref(&self) -> &Self::Target {
+        &self.connection
+    }
+}
+
+impl DerefMut for Database {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.connection
+    }
+}
+
+fn enable_wal(db: &Connection, timeout: Duration) -> rusqlite::Result<String> {
+    // A DELETE -> WAL lock upgrade can return SQLITE_BUSY immediately without
+    // invoking SQLite's busy handler. Non-CLI readers may still hold this lock.
+    // Use one deadline, rather than stacking each attempt's 30-second timeout.
+    db.busy_timeout(Duration::ZERO)?;
+    let deadline = Instant::now() + timeout;
+    let result = loop {
+        match db.query_row("PRAGMA journal_mode=WAL", [], |r| r.get(0)) {
+            Err(e)
+                if matches!(
+                    &e,
+                    rusqlite::Error::SqliteFailure(code, _)
+                        if code.code == rusqlite::ErrorCode::DatabaseBusy
+                ) =>
+            {
+                let remaining = deadline.saturating_duration_since(Instant::now());
+                if remaining.is_zero() {
+                    break Err(e);
+                }
+                std::thread::sleep(remaining.min(Duration::from_millis(10)));
+            }
+            result => break result,
+        }
+    };
+    let restored = db.busy_timeout(LOCK_TIMEOUT);
+    // Preserve the original SQLite error on failure, including non-BUSY errors.
+    match result {
+        Err(e) => Err(e),
+        Ok(mode) => restored.map(|()| mode),
+    }
+}
+
+fn open(path: &Path, initialize: bool) -> Result<Database> {
+    let (path, operation_lock) = prepare_path(path, initialize)?;
     let mut db = Connection::open_with_flags(
         path,
         OpenFlags::SQLITE_OPEN_READ_WRITE | OpenFlags::SQLITE_OPEN_NOFOLLOW,
     )?;
-    db.busy_timeout(Duration::from_secs(30))?;
+    db.busy_timeout(LOCK_TIMEOUT)?;
     db.execute_batch("PRAGMA foreign_keys=ON; PRAGMA synchronous=FULL;")?;
     // Recheck identity under the writer lock so concurrent initializations cannot reset it.
     let tx = db.transaction_with_behavior(TransactionBehavior::Immediate)?;
@@ -346,7 +473,7 @@ fn open(path: &Path, initialize: bool) -> Result<Connection> {
         ));
     }
     tx.commit()?;
-    let journal: String = db.query_row("PRAGMA journal_mode=WAL", [], |r| r.get(0))?;
+    let journal = enable_wal(&db, LOCK_TIMEOUT)?;
     if journal != "wal" {
         return Err(error(
             "durability_unavailable",
@@ -354,7 +481,10 @@ fn open(path: &Path, initialize: bool) -> Result<Connection> {
         ));
     }
     db.execute_batch("PRAGMA synchronous=FULL;")?;
-    Ok(db)
+    Ok(Database {
+        connection: db,
+        _operation_lock: operation_lock,
+    })
 }
 
 #[derive(Clone)]
@@ -816,5 +946,111 @@ fn main() {
             );
             std::process::exit(1);
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn rollback_database() -> (tempfile::TempDir, Connection, Connection) {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("wal-upgrade.sqlite");
+        let db = Connection::open(&path).unwrap();
+        db.execute_batch("PRAGMA journal_mode=DELETE; CREATE TABLE example(value INTEGER)")
+            .unwrap();
+        let holder = Connection::open(&path).unwrap();
+        (directory, db, holder)
+    }
+
+    #[test]
+    fn wal_upgrade_retries_busy_lock_upgrade_then_restores_busy_timeout() {
+        let (_directory, db, holder) = rollback_database();
+        holder.execute_batch("BEGIN IMMEDIATE").unwrap();
+        db.busy_timeout(LOCK_TIMEOUT).unwrap();
+        // This lock-upgrade conflict bypasses SQLite's normal busy handler.
+        let original = db
+            .query_row("PRAGMA journal_mode=WAL", [], |r| r.get::<_, String>(0))
+            .unwrap_err();
+        assert_eq!(
+            original.sqlite_error_code(),
+            Some(rusqlite::ErrorCode::DatabaseBusy)
+        );
+        let releasing = std::thread::spawn(move || {
+            std::thread::sleep(Duration::from_millis(80));
+            holder.execute_batch("ROLLBACK").unwrap();
+        });
+        assert_eq!(enable_wal(&db, Duration::from_secs(2)).unwrap(), "wal");
+        releasing.join().unwrap();
+        assert_eq!(
+            db.query_row("PRAGMA busy_timeout", [], |r| r.get::<_, i64>(0))
+                .unwrap(),
+            30_000
+        );
+    }
+
+    #[test]
+    fn wal_upgrade_deadline_preserves_busy_error_and_restores_timeout() {
+        let (_directory, db, holder) = rollback_database();
+        holder.execute_batch("BEGIN IMMEDIATE").unwrap();
+        let started = Instant::now();
+        let err = enable_wal(&db, Duration::from_millis(40)).unwrap_err();
+        assert_eq!(
+            err.sqlite_error_code(),
+            Some(rusqlite::ErrorCode::DatabaseBusy)
+        );
+        assert_eq!(err.to_string(), "database is locked");
+        assert!(started.elapsed() >= Duration::from_millis(40));
+        // Detect accidentally retaining a 30s busy handler per attempt.
+        assert!(started.elapsed() < Duration::from_secs(2));
+        assert_eq!(
+            db.query_row("PRAGMA busy_timeout", [], |r| r.get::<_, i64>(0))
+                .unwrap(),
+            30_000
+        );
+    }
+
+    #[test]
+    fn wal_upgrade_does_not_retry_non_busy_errors() {
+        let (directory, db, holder) = rollback_database();
+        drop(holder);
+        drop(db);
+        let read_only = Connection::open_with_flags(
+            directory.path().join("wal-upgrade.sqlite"),
+            OpenFlags::SQLITE_OPEN_READ_ONLY,
+        )
+        .unwrap();
+        let started = Instant::now();
+        let err = enable_wal(&read_only, Duration::from_secs(2)).unwrap_err();
+        assert_eq!(err.sqlite_error_code(), Some(rusqlite::ErrorCode::ReadOnly));
+        assert!(started.elapsed() < Duration::from_secs(1));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn operation_lock_has_bounded_wait_and_survives_sqlite_close() {
+        use std::os::unix::fs::PermissionsExt;
+        let directory = tempfile::tempdir().unwrap();
+        fs::set_permissions(directory.path(), fs::Permissions::from_mode(0o700)).unwrap();
+        let path = directory.path().join("budget.sqlite");
+        let db = open(&path, true).unwrap();
+        assert_eq!(
+            db.query_row("PRAGMA synchronous", [], |r| r.get::<_, i64>(0))
+                .unwrap(),
+            2 // FULL on the actual CLI connection
+        );
+        let started = Instant::now();
+        let err = acquire_operation_lock(&path, Duration::from_millis(40)).unwrap_err();
+        assert_eq!(err.code, "operation_lock_timeout");
+        assert!(started.elapsed() >= Duration::from_millis(40));
+        assert!(started.elapsed() < Duration::from_secs(2));
+        drop(db);
+        let _lock = acquire_operation_lock(&path, Duration::from_millis(40)).unwrap();
+        assert!(!directory.path().join("budget.sqlite-wal").exists());
+        assert!(!directory.path().join("budget.sqlite-shm").exists());
+        assert!(directory
+            .path()
+            .join("budget.sqlite.operation.lock")
+            .exists());
     }
 }

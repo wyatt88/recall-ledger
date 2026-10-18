@@ -300,7 +300,8 @@ fn concurrent_first_initializations_cannot_replace_the_winning_limit() {
             assert!(winning_limit.is_none());
             winning_limit = Some(success(output)["budget"]["limit_micro_usd"].clone());
         } else {
-            assert_eq!(failure(output), "initialization_conflict");
+            let stderr = String::from_utf8_lossy(&output.stderr).into_owned();
+            assert_eq!(failure(output), "initialization_conflict", "{stderr}");
         }
     }
     assert_eq!(
@@ -568,4 +569,74 @@ fn private_paths_reject_symlinks_hardlinks_and_permissive_modes() {
     std::fs::set_permissions(&f.db, std::fs::Permissions::from_mode(0o600)).unwrap();
     std::fs::set_permissions(f._dir.path(), std::fs::Permissions::from_mode(0o755)).unwrap();
     assert_eq!(failure(cli(&f.db, &["snapshot"])), "invalid_path");
+}
+
+#[cfg(unix)]
+#[test]
+fn operation_lock_precedes_sidecar_validation_and_is_released_after_errors() {
+    use std::os::unix::fs::symlink;
+    let f = Fixture::new("1");
+    let lock_path = f._dir.path().join("budget.sqlite.operation.lock");
+    let lock = std::fs::OpenOptions::new()
+        .read(true)
+        .write(true)
+        .open(&lock_path)
+        .unwrap();
+    fs2::FileExt::lock_exclusive(&lock).unwrap();
+    // While a cooperating connection owns the lock, its sidecars can be in
+    // transition. A waiting CLI must not inspect them before obtaining the lock.
+    let sidecar = f._dir.path().join("budget.sqlite-wal");
+    symlink(&f.db, &sidecar).unwrap();
+    let mut waiting = command(&f.db, &["snapshot"])
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap();
+    std::thread::sleep(std::time::Duration::from_millis(100));
+    assert!(waiting.try_wait().unwrap().is_none());
+    std::fs::remove_file(&sidecar).unwrap();
+    fs2::FileExt::unlock(&lock).unwrap();
+    success(waiting.wait_with_output().unwrap());
+    // A failed transaction must release the lock too; it must never reset the
+    // original limit or remove/replace the shared lock inode.
+    assert_eq!(
+        failure(cli(
+            &f.db,
+            &["init", "--budget-id", "budget-1", "--limit-usd", "2"]
+        )),
+        "initialization_conflict"
+    );
+    fs2::FileExt::try_lock_exclusive(&lock).unwrap();
+    fs2::FileExt::unlock(&lock).unwrap();
+    assert_eq!(f.snapshot()["budget"]["limit_micro_usd"], "1000000");
+}
+
+#[cfg(unix)]
+#[test]
+fn operation_lock_rejects_symlinks_hardlinks_and_permissive_modes_without_repair() {
+    use std::os::unix::fs::{symlink, PermissionsExt};
+    let f = Fixture::new("1");
+    let lock_path = f._dir.path().join("budget.sqlite.operation.lock");
+    let target = f._dir.path().join("lock-target");
+    std::fs::rename(&lock_path, &target).unwrap();
+    symlink(&target, &lock_path).unwrap();
+    assert_eq!(failure(cli(&f.db, &["snapshot"])), "invalid_path");
+    assert!(lock_path
+        .symlink_metadata()
+        .unwrap()
+        .file_type()
+        .is_symlink());
+    std::fs::remove_file(&lock_path).unwrap();
+    std::fs::hard_link(&target, &lock_path).unwrap();
+    assert_eq!(failure(cli(&f.db, &["snapshot"])), "invalid_path");
+    std::fs::remove_file(&lock_path).unwrap();
+    std::fs::rename(&target, &lock_path).unwrap();
+    std::fs::set_permissions(&lock_path, std::fs::Permissions::from_mode(0o644)).unwrap();
+    assert_eq!(failure(cli(&f.db, &["snapshot"])), "invalid_path");
+    assert_eq!(
+        lock_path.metadata().unwrap().permissions().mode() & 0o777,
+        0o644
+    );
+    std::fs::set_permissions(&lock_path, std::fs::Permissions::from_mode(0o600)).unwrap();
+    success(cli(&f.db, &["snapshot"]));
 }

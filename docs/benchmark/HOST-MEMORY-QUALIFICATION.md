@@ -57,6 +57,14 @@ ChatGPT App 必须在实际 App 的独立测试宿主上验收，平台按当时
 
 前两次 staging 失败的最终症状均为 wrapper timeout，具体原因分别为控制连接传输 timeout、CSI 挂载未及时可见。第三次失败为 `sdk_import_does_not_match_requested_root`：ConfigMap atomic writer 的 symlink 使解析后的模块位置不在 probe 要求的 SDK package 实目录下。Controller 保留了失败证据，改为启动前复制 SDK 到稳定实目录，再使用新的 work-dir 重跑；没有修改冻结 probe 放宽校验。该次失败只留下 fixture 根目录与锁文件，未操作 Memory DB。最终成功也不得从记录中删除这三次尝试。
 
+### 首次提交后的 CI 发现
+
+资格检查提交 [`a54c5fb`](https://github.com/wyatt88/recall-ledger/commit/a54c5fb181b69e3eaacf563f06320533dc6c42e2) 的[首次 CI](https://github.com/wyatt88/recall-ledger/actions/runs/39138412470)中，macOS 全部通过；Linux stable 与 Rust 1.89.0 均编译成功，但既有预算账本的八进程首次初始化用例失败。失败方有时返回 `database_error`，未到达预期的 `initialization_conflict`。
+
+单独复现确认：SQLite 的 DELETE → WAL 模式切换可能立即返回 `SQLITE_BUSY`，不等待已设置的 busy timeout；并发启动还捕获过 `invalid_path`，具体失败元数据未确定。这属于 `recall-bench-budget` 的本地并发缺陷，保留原失败记录。EKS 的54项机制结果来自上述固定 daemon 基线，不包含之后的预算工具修复，也不能作为该修复在 EKS 上通过的证据。
+
+后续修复对单个本地账本使用独立的 owner-only 文件锁，覆盖 DB/辅助文件检查到 SQLite 连接关闭；不删除锁文件，不降低既有权限或预算上限校验。WAL 切换仅对 `SQLITE_BUSY` 有界重试，其他错误直接保留。4项单元测试及16项预算集成测试通过，原八进程唯一赢家断言保留；新增覆盖锁等待、异常释放、不安全锁文件拒绝及 WAL 超时。源码已交叉审阅，跨平台结果以对应提交的 CI 为准。
+
 ## Probe 检查什么
 
 Initial 覆盖重复事件幂等、pending 不可召回、显式准入后可读、显式 revision/retraction、旧 manifest 失效、无关稳定事实保留、daemon 中断后的 outbox、同库重启、错误 namespace binding 拒绝及恢复原 binding。测试直接写入的 foreign-namespace canary 也是辅助 fixture 数据。
