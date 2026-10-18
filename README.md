@@ -130,7 +130,15 @@ and refresh after corrections or context compaction.
 | Claude Code project hooks | Implemented; live host acceptance pending | Disable native auto memory in the selected project, capture pending proposals, inject fresh recall |
 | Local ChatGPT / Codex hooks | Implemented for the documented local Codex runtime; App trust/loading still required | Share one project adapter; disable native memory generation/use in that scope and refresh after compaction |
 | OpenCode V1 plugin | Implemented for v1.18.35; V2 unsupported | Fresh recall before model dispatch, pending capture; host sessions and compaction stay native |
-| KiroCrew trusted Gateway bridge | Implemented callable bridge; upstream wiring required | The framework routes long-term reads and writes through RecallLedger; it keeps its own checkpoints |
+| KiroCrew trusted Gateway bridge | Implemented callable bridge; upstream wiring required | Native V2 still owns memory until the Gateway is explicitly wired and ownership is tested |
+
+The [EKS Host Memory qualification](docs/benchmark/HOST-MEMORY-QUALIFICATION.md)
+passed 54 assisted adapter checks, including recovery in a new Pod using the
+same persistent volume. These checks used synthetic host events and explicit
+admission/correction actions. Claude Code, the actual local ChatGPT Agent App,
+and the KiroCrew Gateway have **not passed live native-memory replacement
+acceptance**. Captured candidates remain pending until explicitly admitted;
+automatic summaries and repair do not provide autonomous admission.
 
 Keep human-authored `AGENTS.md`, `CLAUDE.md`, and project rules. Learned facts
 should enter a data channel, with provenance and revision metadata, rather than

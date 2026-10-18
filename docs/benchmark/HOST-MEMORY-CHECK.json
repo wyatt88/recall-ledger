@@ -1,0 +1,452 @@
+{
+  "schema_version": "recall-ledger.host-memory-qualification/1",
+  "date": "2026-10-18",
+  "core_commit": "3c26a4dd7d617efe37ceb34116eaeb0adf43339d",
+  "core_version": "0.4.0",
+  "fingerprints": {
+    "binary_sha256": "14243a284b493ed925413d0ece18848719e6b494027ab2b8dcb2a463cb076e34",
+    "probe_sha256": "4202f1beb98e0dd6efa81603b9104927dfaa8fbf4c2aa9d8cfec240178a141ef",
+    "sdk_python_sha256": "0e8568595103df35b6f9d0cbcd591b4ed12c6a1c7133d9f2db60b948e3085224"
+  },
+  "environment": {
+    "platform": "EKS",
+    "instance_type": "m7i.large",
+    "dedicated_nodes": 1,
+    "execution": "serial",
+    "runtime": "gVisor",
+    "gvisor_version": "20261005.0",
+    "gvisor_platform": "systrap",
+    "sandbox_network": "none",
+    "daemon_placement": "same-container subprocess",
+    "retrieval_mode": "lexical",
+    "model_configuration": "none",
+    "daemon_worker": false,
+    "python_image_digest": "sha256:2ed6491b93cd49272ee6de2b5a38440c3448360322c089fc23e370722d74179d",
+    "rust_builder_image_digest": "sha256:5f29c3b4cb8ad8c6f10df979595582dd67dd146ffebc70718e24ff2e5b4a194d"
+  },
+  "model_provider_requests": 0,
+  "model_cost_usd": 0,
+  "test_kind": "adapter_fixture",
+  "live_host_executed": false,
+  "native_memory_replacement_verified": false,
+  "replacement_status": "blocked_autonomous_admission",
+  "native_paired_benchmark": "not_run",
+  "phases": [
+    {
+      "phase": "initial",
+      "status": "pass",
+      "test_kind": "adapter_fixture",
+      "live_host_executed": false,
+      "native_memory_replacement_verified": false,
+      "replacement_status": "blocked_autonomous_admission",
+      "cleanup": {
+        "all_daemons_stopped": true,
+        "fixture_state_retained": true
+      },
+      "adapters": [
+        {
+          "adapter": "claude-code",
+          "checks": [
+            {
+              "name": "raw_capture_is_one_pending_candidate",
+              "status": "pass"
+            },
+            {
+              "name": "pending_not_recalled_in_new_synthetic_session",
+              "status": "pass"
+            },
+            {
+              "name": "assisted_accept_visible_in_new_synthetic_session",
+              "status": "pass"
+            },
+            {
+              "name": "mutable_original_visible",
+              "status": "pass"
+            },
+            {
+              "name": "assisted_correction_visible_old_body_absent",
+              "status": "pass"
+            },
+            {
+              "name": "old_manifest_invalid_after_correction",
+              "status": "pass"
+            },
+            {
+              "name": "assisted_retraction_absent_from_fresh_read",
+              "status": "pass"
+            },
+            {
+              "name": "stable_fact_survives_unrelated_retraction",
+              "status": "pass"
+            },
+            {
+              "name": "offline_capture_saved_under_original_binding",
+              "status": "pass"
+            },
+            {
+              "name": "same_database_restart_preserves_binding",
+              "status": "pass"
+            },
+            {
+              "name": "offline_delivery_once_after_restart",
+              "status": "pass"
+            },
+            {
+              "name": "offline_payload_remains_pending",
+              "status": "pass"
+            },
+            {
+              "name": "wrong_namespace_binding_blocks_read_and_delivery",
+              "status": "pass"
+            },
+            {
+              "name": "original_history_usable_after_binding_fault",
+              "status": "pass"
+            }
+          ],
+          "assisted_actions": [
+            "candidate_resolve:accept_stable",
+            "candidate_resolve:accept_mutable",
+            "revise:explicit_record_id",
+            "retract:explicit_record_id"
+          ],
+          "status": "pass",
+          "replacement_status": "blocked_autonomous_admission"
+        },
+        {
+          "adapter": "chatgpt",
+          "checks": [
+            {
+              "name": "raw_capture_is_one_pending_candidate",
+              "status": "pass"
+            },
+            {
+              "name": "pending_not_recalled_in_new_synthetic_session",
+              "status": "pass"
+            },
+            {
+              "name": "assisted_accept_visible_in_new_synthetic_session",
+              "status": "pass"
+            },
+            {
+              "name": "mutable_original_visible",
+              "status": "pass"
+            },
+            {
+              "name": "assisted_correction_visible_old_body_absent",
+              "status": "pass"
+            },
+            {
+              "name": "old_manifest_invalid_after_correction",
+              "status": "pass"
+            },
+            {
+              "name": "assisted_retraction_absent_from_fresh_read",
+              "status": "pass"
+            },
+            {
+              "name": "stable_fact_survives_unrelated_retraction",
+              "status": "pass"
+            },
+            {
+              "name": "offline_capture_saved_under_original_binding",
+              "status": "pass"
+            },
+            {
+              "name": "same_database_restart_preserves_binding",
+              "status": "pass"
+            },
+            {
+              "name": "offline_delivery_once_after_restart",
+              "status": "pass"
+            },
+            {
+              "name": "offline_payload_remains_pending",
+              "status": "pass"
+            },
+            {
+              "name": "wrong_namespace_binding_blocks_read_and_delivery",
+              "status": "pass"
+            },
+            {
+              "name": "original_history_usable_after_binding_fault",
+              "status": "pass"
+            }
+          ],
+          "assisted_actions": [
+            "candidate_resolve:accept_stable",
+            "candidate_resolve:accept_mutable",
+            "revise:explicit_record_id",
+            "retract:explicit_record_id"
+          ],
+          "status": "pass",
+          "replacement_status": "blocked_autonomous_admission"
+        },
+        {
+          "adapter": "kirocrew",
+          "checks": [
+            {
+              "name": "raw_capture_is_one_pending_candidate",
+              "status": "pass"
+            },
+            {
+              "name": "pending_not_recalled_in_new_synthetic_session",
+              "status": "pass"
+            },
+            {
+              "name": "assisted_accept_visible_in_new_synthetic_session",
+              "status": "pass"
+            },
+            {
+              "name": "mutable_original_visible",
+              "status": "pass"
+            },
+            {
+              "name": "assisted_correction_visible_old_body_absent",
+              "status": "pass"
+            },
+            {
+              "name": "old_manifest_invalid_after_correction",
+              "status": "pass"
+            },
+            {
+              "name": "assisted_retraction_absent_from_fresh_read",
+              "status": "pass"
+            },
+            {
+              "name": "stable_fact_survives_unrelated_retraction",
+              "status": "pass"
+            },
+            {
+              "name": "offline_capture_saved_under_original_binding",
+              "status": "pass"
+            },
+            {
+              "name": "same_database_restart_preserves_binding",
+              "status": "pass"
+            },
+            {
+              "name": "offline_delivery_once_after_restart",
+              "status": "pass"
+            },
+            {
+              "name": "offline_payload_remains_pending",
+              "status": "pass"
+            },
+            {
+              "name": "wrong_namespace_binding_blocks_read_and_delivery",
+              "status": "pass"
+            },
+            {
+              "name": "original_history_usable_after_binding_fault",
+              "status": "pass"
+            }
+          ],
+          "assisted_actions": [
+            "candidate_resolve:accept_stable",
+            "candidate_resolve:accept_mutable",
+            "revise:explicit_record_id",
+            "retract:explicit_record_id"
+          ],
+          "status": "pass",
+          "replacement_status": "blocked_autonomous_admission"
+        }
+      ]
+    },
+    {
+      "phase": "resume",
+      "status": "pass",
+      "test_kind": "adapter_fixture",
+      "live_host_executed": false,
+      "native_memory_replacement_verified": false,
+      "replacement_status": "blocked_autonomous_admission",
+      "cleanup": {
+        "all_daemons_stopped": true,
+        "fixture_state_retained": true
+      },
+      "adapters": [
+        {
+          "adapter": "claude-code",
+          "checks": [
+            {
+              "name": "persisted_history_identity_unchanged",
+              "status": "pass"
+            },
+            {
+              "name": "persisted_pending_candidates_unchanged_before_adapter_calls",
+              "status": "pass"
+            },
+            {
+              "name": "persisted_stable_fact_in_new_synthetic_session",
+              "status": "pass"
+            },
+            {
+              "name": "retracted_fact_not_resurrected_after_resume",
+              "status": "pass"
+            }
+          ],
+          "assisted_actions": [],
+          "status": "pass",
+          "replacement_status": "blocked_autonomous_admission"
+        },
+        {
+          "adapter": "chatgpt",
+          "checks": [
+            {
+              "name": "persisted_history_identity_unchanged",
+              "status": "pass"
+            },
+            {
+              "name": "persisted_pending_candidates_unchanged_before_adapter_calls",
+              "status": "pass"
+            },
+            {
+              "name": "persisted_stable_fact_in_new_synthetic_session",
+              "status": "pass"
+            },
+            {
+              "name": "retracted_fact_not_resurrected_after_resume",
+              "status": "pass"
+            }
+          ],
+          "assisted_actions": [],
+          "status": "pass",
+          "replacement_status": "blocked_autonomous_admission"
+        },
+        {
+          "adapter": "kirocrew",
+          "checks": [
+            {
+              "name": "persisted_history_identity_unchanged",
+              "status": "pass"
+            },
+            {
+              "name": "persisted_pending_candidates_unchanged_before_adapter_calls",
+              "status": "pass"
+            },
+            {
+              "name": "persisted_stable_fact_in_new_synthetic_session",
+              "status": "pass"
+            },
+            {
+              "name": "retracted_fact_not_resurrected_after_resume",
+              "status": "pass"
+            }
+          ],
+          "assisted_actions": [],
+          "status": "pass",
+          "replacement_status": "blocked_autonomous_admission"
+        }
+      ]
+    }
+  ],
+  "controller_persistence_checks": {
+    "different_pod_uids": true,
+    "both_pods_succeeded": true,
+    "same_node": true,
+    "same_pvc_uid_before_and_after": true,
+    "same_bound_pv_before_and_after": true,
+    "pvc_bound_before_and_after": true,
+    "same_run_id": true,
+    "same_binary_sdk_probe_fingerprints": true,
+    "identical_fixture_manifest_in_state_archives": true,
+    "initial_container_finished_before_resume_pod_started": true
+  },
+  "preceding_attempts": [
+    {
+      "attempt": 1,
+      "stage": "artifact_staging",
+      "status": "failed",
+      "reason": "control_plane_transfer_timeouts",
+      "memory_probe_started": false
+    },
+    {
+      "attempt": 2,
+      "stage": "artifact_staging",
+      "status": "failed",
+      "reason": "late_CSI_mount_not_visible_in_trusted_helper",
+      "memory_probe_started": false
+    },
+    {
+      "attempt": 3,
+      "stage": "sdk_layout_preflight",
+      "status": "failed",
+      "reason": "sdk_import_does_not_match_requested_root",
+      "memory_database_operations_started": false
+    }
+  ],
+  "deployment_repairs": [
+    "Use resolved EKS endpoint address with original TLS hostname and CA validation",
+    "Stage artifact through verified live PVC mount and verify binary SHA256",
+    "Copy ConfigMap SDK projection into stable real directory without changing frozen probe"
+  ],
+  "host_gates": {
+    "claude-code": {
+      "live_host": "not_run",
+      "native_suppression": "unverified",
+      "autonomous_admission": "blocked"
+    },
+    "chatgpt-local-app": {
+      "live_host": "not_run",
+      "effective_hooks": "unverified",
+      "native_suppression": "unverified",
+      "autonomous_admission": "blocked"
+    },
+    "kirocrew": {
+      "live_gateway": "not_run",
+      "gateway_wired": false,
+      "native_memory": "coexists_no_v2_replacement",
+      "autonomous_admission": "blocked"
+    }
+  },
+  "limits": [
+    "Synthetic Host events; no real Claude, ChatGPT App or KiroCrew process.",
+    "Assisted mutations supplied by this fixture; no autonomous extraction/admission.",
+    "Same-container daemon subprocess; no cross-container sidecar qualification.",
+    "Resume verifies supplied filesystem state; caller must establish PVC/Pod provenance.",
+    "Same node and same PVC; no cross-node or cross-brand migration claim",
+    "No native baseline, real compaction, performance comparison or longitudinal degradation evaluation"
+  ],
+  "cloud_cleanup": {
+    "checked_at": "2026-10-18T14:56:49.108425+00:00",
+    "owned_resource_count": 0,
+    "remaining_owned_kinds": [],
+    "node_count": 6,
+    "original_node_count": 6,
+    "original_node_uids_preserved": true,
+    "only_original_nodes_remain": true,
+    "original_nodes_ready": true,
+    "test_instance_state": "terminated",
+    "ebs_volumes_checked": 2,
+    "test_ebs_volumes_absent": true,
+    "status": "complete"
+  },
+  "private_evidence_sha256": {
+    "host-initial-result.json": "a7fb99672299ad25deb60ca1b60c64d0e0968a59d330136628720531a47c6696",
+    "host-resume-result.json": "91682aaaa849de580b2815f9c556bfc219f48817ad34e3b0a2827b7c682a2f89",
+    "host-initial-completed-pod.json": "2d96969985277f37f60399515b8ae36bb1667f79b3f34b2ba05275394ff5e536",
+    "host-resume-completed-pod.json": "aed9d289e2e2c42ec77e0f3bc98556757474e229444a0d58d4d7d1a6a848639a",
+    "pvc-live.json": "b1842b74faf325e878c589681bd85218beafd5b4ceb82fdf53e0ac19420b66a7",
+    "initial-state.tar.gz": "92f8fb9dc676fab25049c8358f86c95d32f5e7cca9c6a8ed63c199078097d6b5",
+    "resume-state.tar.gz": "98397a3d177f365ae5f029157a7acc7cef964e91b747026e9f56c5df94c9ba49",
+    "build-source.tar.gz": "10500f86649397c1c19e6ca2fd4bedcf1a84659d893ae38e3e9e2afe0e4ff627",
+    "build.log": "c1af5fa6394eeb2a0169980fbdbdd90d9cd769a7ea592f649bf6bfd9d1013a89",
+    "artifact-stage.json": "318df52256726e5eec416f3aea087f9501e019ff8e74010eb56bf33d8b384fa4",
+    "artifact-real-pvc.json": "4dd4b549602419338349acf2b33393cf3856e39e9c8f69ac42304393ac708eb6",
+    "recall-sandbox-qual-before-cleanup.json": "4c23b388bd8de2909105c6f28fd7bc78c84c1438428bf1cab5ea809c55148d7c",
+    "cloud-cleanup-summary.json": "5dccd9162d4962bc611c413eac1f37dcf0c4350b002969daa76fe508e7697379",
+    "cleanup-owned-after.json": "90fc342f098745bb50dfae4c6eda65e986fd5a807cf01abdf668d8dd03bca0d6",
+    "cleanup-nodes-after.json": "f9515876c8550d2e31cb5728ac0261db841500dc0005622a7be5a40883d645a2",
+    "cleanup-instance-after.json": "a574383c5ff4264c264db80c1d9a5b986bf945f33caa606c349dd46fe36369ae",
+    "cleanup-volumes-after.json": "97daeaee958dbfbf441fe50fe539ad4ddd2f85870a51a0ad2ee918da84d203f7"
+  },
+  "binary_build_provenance": {
+    "core_commit": "3c26a4dd7d617efe37ceb34116eaeb0adf43339d",
+    "source_archive_matches_core_files": true,
+    "locked_build": true,
+    "size_bytes": 7838032,
+    "node_stage_and_real_pvc_sha256_match_executed_binary": true,
+    "real_pvc_mount_verified": true,
+    "incomplete_local_downloads_used": false
+  }
+}

@@ -1,4 +1,5 @@
 import importlib.util
+from contextlib import closing
 import json
 from pathlib import Path
 import socket
@@ -71,7 +72,7 @@ class PersistenceTests(unittest.TestCase):
             marker.write_text(json.dumps(state))
             response = probe.sqlite_probe(work, "resume")
             self.assertEqual(response["observed"]["reason"], "identity_mismatch")
-            with sqlite3.connect(database) as db:
+            with closing(sqlite3.connect(database)) as db:
                 self.assertEqual(
                     db.execute("SELECT value FROM probe_state WHERE key='durable_sequence'").fetchone(),
                     ("1",),
