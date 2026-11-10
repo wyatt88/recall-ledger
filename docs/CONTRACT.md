@@ -3,9 +3,10 @@
 This document describes the source preview. It does not establish production
 readiness, model grounding, or benchmark quality.
 The [v0.1 contract](IMPLEMENTATION-CONTRACT.md) is retained as a historical record.
-The current source branch adds the portable extension below after v0.4.0 and
-upgrades database schema 3 to 4 without changing the existing history identity.
-Use a backup before upgrading; older binaries cannot open schema 4.
+The current source branch adds the portable, source-preservation, historical
+evidence and SDK workflow extensions after v0.4.0. It upgrades older supported
+databases to schema 5 without changing the existing history identity.
+Use a backup before upgrading; older binaries cannot open schema 5.
 
 ## Source-preservation extension (development)
 
@@ -55,6 +56,63 @@ offline inspect, current evidence verification, and explicit cross-ledger
 rebase. It carries task prose and evidence references without granting tool
 permissions, validating artifact contents or resuming a live execution state.
 
+## History and impact extension (schema 5)
+
+| Method | Parameters and behavior |
+| --- | --- |
+| `impact_preview` | `id`, optional `expected_revision`; read-only current record, source evidence, revision chain, registered dependencies and affected descendants |
+| `timeline` | Optional `query`, `as_of`, `limit` and opaque `cursor`; paginated event history or knowledge-at-recorded-time view |
+
+Schema 5 stores metadata-only revision/lifecycle events. Historical bodies are
+read through current withdrawal and dependency gates; retracted text is withheld
+regardless of cutoff. Corrected or expired assertions can be historical evidence
+with `historical_only:true` and `usable_as_current:false`. They are never
+silently substituted for ordinary recall context. Impact describes only
+registered dependencies and does not reserve a revision for a later write.
+
+Optional `occurred_at` on `remember` and `revise` is caller-attributed occurrence
+time. `valid_from/valid_until` remain the applicability interval.
+`recorded_at` describes the local recording event; timeline `as_of` uses that
+recorded-time meaning. These are separate quantities, not inferred from prose.
+Legacy migration does not invent missing events, occurrence times or old
+dependency snapshots. The portable/1 envelope remains compatible and does not
+carry these new audit histories or occurrence metadata.
+
+The [history and impact contract](history-and-impact.md) defines response
+fields, body gates, pagination, size bounds, legacy history limits, and recovery.
+These interfaces work through Store, Runtime, IPC, CLI and MCP. Their checks
+establish recorded provenance and state, not semantic truth or host acceptance.
+
+## Python workflow extension (development)
+
+The SDK modules `semantic`, `retrieval`, `migration_wizard`, and
+`memory_workflows` combine existing core methods without adding a raw mutation
+gateway. `python -m recall_ledger.memory_workflows` requires a local socket and
+a saved binding file. It supports candidate preview/review/resolution, explicit
+indexing and multi-query evidence retrieval, native and portable migration,
+selected export, task handoff, experience inspection and reminder polling.
+
+Candidate matches are suggestions. Admission uses exact scoped fact identity,
+qualification review and a freshly checked revision. A match score or a
+confidence field never becomes a truth decision. SDK evidence assembly checks
+the full selected dependency/group closure, includes a context manifest, and
+reports exclusions and index degradation. Rule encoding is a finite offline
+baseline, not demonstrated general semantic understanding.
+
+Native Markdown/JSON imports become pending candidates; their multi-item apply
+is explicitly non-atomic and reports partial/unknown outcomes. Portable apply
+retains the core transaction and exact reviewed target commit. Neither
+automatically refreshes a stale plan. Selected export checks the valid closure
+but produces pending-import JSON, not a namespace-complete portable snapshot.
+No workflow transfers execution authority or installs a host.
+
+The [SDK workflow contract](semantic-retrieval-migration.md) specifies concrete
+parameters, budgets, formats, recovery, CLI commands and local checks.
+[Experience and commitment contracts](experience-and-commitments.md) separately
+require trusted host receipts/environment observations and external delivery
+reconciliation. Generic CLI experience inspection has no host receipt verifier
+and remains unknown; reminder polling neither claims nor sends a reminder.
+
 ## Store, runtime, and transports
 
 `Store::open(path)` opens SQLite; `Store::execute(namespace, method, params)`
@@ -91,19 +149,26 @@ the old trusted-deployment behavior and lack this misrouting protection.
 Without the file, MCP reads and pins the identity at startup for that process
 only. Neither mode provides authentication against another same-user process.
 
+`recall-ledger call` accepts `--params-file PATH` or `--params-file -` for
+bounded file/stdin JSON, mutually exclusive with explicit `--params`.
+Its `--expected-binding` JSON uses the same atomic Runtime/Store assertion,
+including when recovering an existing receipt. See the
+[CLI integration details](history-and-impact.md#cli-integration).
+
 Errors have `{code, message, retryable}`. Error text from model providers is never
 copied into the error response or task metadata. Public low-level administrative
 methods remain trusted interfaces; they are not a hostile same-user sandbox.
 
 ## Records and idempotency
 
-These methods retain the v0.1 behavior:
+These methods retain their existing lifecycle behavior, with the optional
+schema 5 occurrence metadata noted below:
 
 | Method | Parameters and behavior |
 | --- | --- |
-| `remember` | `body`, optional `kind`, `source`, `volatility`, `valid_from`, `valid_until`, and `idempotency_key` |
+| `remember` | `body`, `idempotency_key`; optional `kind`, `source`, `volatility`, `valid_from`, `valid_until`, `occurred_at` |
 | `inspect` | `id`, optional `history=false`; ordinary reads require a current valid record |
-| `revise` | `id`, `expected_revision`, `body`, `idempotency_key`; increments revision and withdraws dependents |
+| `revise` | `id`, `expected_revision`, `body`, `idempotency_key`, optional `occurred_at`; increments revision and withdraws dependents |
 | `retract` | `id`, `expected_revision`, `idempotency_key`; terminal logical withdrawal of source and dependents |
 | `prepare` | `inputs`, `processor`, `idempotency_key`; captures source revisions for a manual processor |
 | `job` | `job_id`; returns captured bodies only while those dependencies remain eligible |
@@ -284,7 +349,9 @@ publishing a result; use smaller groups when input limits are reached.
 Response model, vector shape, finish status, and output length are
 validated. This is protocol validation, not a proof of factual correctness.
 
-Schema 1/2/3 databases migrate transactionally to schema 4 on open. Unknown schema
-versions are refused. Older binaries cannot open schema 4. Manual file cloning,
-secure physical erasure, ANN scalability, repository-state verification, and
-hidden model/tool provenance are outside this contract.
+Schema 0–4 databases migrate transactionally to schema 5 on open. Unknown schema
+versions are refused. Older binaries cannot open schema 5. Existing history,
+sequence, receipts and identity bindings survive the upgrade; missing legacy
+historical evidence remains explicitly unknown. Manual file cloning, secure
+physical erasure, ANN scalability, general repository-state verification, and
+hidden model/tool provenance are outside this core contract.

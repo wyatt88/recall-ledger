@@ -61,8 +61,14 @@ enum Command {
     /// Execute a trusted local administrative operation directly against SQLite.
     Call {
         method: String,
-        #[arg(long, default_value = "{}")]
-        params: String,
+        #[arg(long, conflicts_with = "params_file")]
+        params: Option<String>,
+        /// Read JSON parameters from a file, or from stdin with '-'.
+        #[arg(long, conflicts_with = "params")]
+        params_file: Option<PathBuf>,
+        /// Pin namespace/history in every transaction using a JSON binding.
+        #[arg(long)]
+        expected_binding: Option<String>,
     },
     /// Serve one fixed namespace over a private Unix-domain socket.
     Serve {
@@ -177,11 +183,55 @@ fn run(cli: Cli) -> Result<(), recall_ledger::Error> {
             print_result(&result);
             Ok(())
         }
-        Command::Call { method, params } => {
+        Command::Call {
+            method,
+            params,
+            params_file,
+            expected_binding,
+        } => {
+            use std::io::Read;
+            let params = if let Some(path) = params_file {
+                let input: Box<dyn Read> =
+                    if path.as_os_str() == "-" {
+                        Box::new(std::io::stdin())
+                    } else {
+                        Box::new(std::fs::File::open(path).map_err(|err| {
+                            transport::failure("io_error", err.to_string(), false)
+                        })?)
+                    };
+                let mut text = String::new();
+                input
+                    .take((transport::MAX_FRAME_BYTES + 1) as u64)
+                    .read_to_string(&mut text)
+                    .map_err(|err| transport::failure("invalid_json", err.to_string(), false))?;
+                if text.len() > transport::MAX_FRAME_BYTES {
+                    return Err(transport::failure(
+                        "resource_exhausted",
+                        "Parameters exceed 1 MiB.",
+                        false,
+                    ));
+                }
+                text
+            } else {
+                params.unwrap_or_else(|| "{}".into())
+            };
             let params: Value = serde_json::from_str(&params)
                 .map_err(|err| transport::failure("invalid_json", err.to_string(), false))?;
+            let expected_binding: Option<Value> = expected_binding
+                .as_deref()
+                .map(serde_json::from_str)
+                .transpose()
+                .map_err(|err| transport::failure("invalid_json", err.to_string(), false))?;
+            if let Some(binding) = &expected_binding {
+                recall_ledger::validate_binding(binding)?;
+            }
             let mut runtime = Runtime::new(Store::open(cli.db)?, config(cli.models)?)?;
-            let result = runtime.execute(&cli.namespace, &method, params)?;
+            let result = runtime.execute_bound(
+                &cli.namespace,
+                &method,
+                params,
+                expected_binding.as_ref(),
+            )?;
             print_result(&result);
             Ok(())
         }

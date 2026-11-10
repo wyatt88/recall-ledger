@@ -233,7 +233,7 @@ fn schema_three_upgrade_preserves_identity_and_data() {
     );
     assert_eq!(
         upgraded.execute("alice", "status", json!({})).unwrap()["schema_version"],
-        4
+        5
     );
     assert!(upgraded
         .execute("alice", "recall", json!({}))

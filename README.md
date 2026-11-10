@@ -25,11 +25,23 @@ changes withdraw them before deterministic repair; insufficient budgets refuse
 publication instead of silently dropping qualifications. Free-form summaries
 remain explicit, unchecked interpretations. [Use and audit the strict path](docs/fidelity.md).
 
+**Development update, 2026-11-10:** schema 5 adds guarded historical evidence
+and a read-only preview of registered dependencies affected by a change.
+Python workflows add qualified candidate review, multi-query evidence assembly,
+native-note and portable migration, environment-bound experience inspection,
+and conditional reminder polling. These are source-branch engineering features;
+they do not establish general semantic quality or live-host acceptance.
+See [history and impact](docs/history-and-impact.md),
+[SDK workflows](docs/semantic-retrieval-migration.md), and
+[experience and commitments](docs/experience-and-commitments.md).
+
 [中文说明](README.zh-CN.md) · [Architecture](docs/architecture.md) ·
 [API contract](docs/CONTRACT.md) · [Operations](docs/OPERATIONS.md) · [Research](docs/research.md) ·
 [Product goals and acceptance](docs/product-goals.md) ·
 [Benchmark design](docs/benchmark/README.md) · [Test environments](docs/benchmark/ENVIRONMENT.md) ·
 [Migration and handoff](docs/migration.md) · [Source preservation](docs/fidelity.md) · [Long-term fidelity evidence](docs/long-term-fidelity.md) ·
+[History and impact](docs/history-and-impact.md) · [SDK memory workflows](docs/semantic-retrieval-migration.md) ·
+[Experience and commitments](docs/experience-and-commitments.md) ·
 [Native memory integration](docs/native-memory.md) · [Roadmap](docs/roadmap.md) ·
 [Claude Code setup](docs/claude-code.md) · [Admission](docs/ingestion.md) · [Recovery](docs/recovery.md) ·
 [Local ChatGPT](docs/chatgpt.md) · [Codex](docs/codex.md) ·
@@ -54,8 +66,8 @@ Version and dependency checks address stale managed results. They do not by
 themselves detect a faithful-looking but false summary. Sharing a ledger between
 adapters also does not establish lossless native-memory import or task migration.
 The [product goals](docs/product-goals.md) separate the existing mechanisms from
-the implemented portable workflow and source-preservation checks from semantic checks, native-format mappings
-and real-host evaluations still needed.
+the implemented portable workflow and source-preservation checks from semantic
+quality, broader native-format coverage and real-host evaluations still needed.
 
 Suppose an agent remembers “the project language is undecided” and starts building
 a summary. You then choose Rust. Updating the original record is not enough:
@@ -164,17 +176,20 @@ The current source preview targets one machine:
 | Automatic repair | Withdraw stale outputs; leased workers rebuild managed summaries with stable IDs |
 | Local daemon | Unix-domain socket on macOS/Linux; no HTTP listener |
 | MCP adapter | Record operations, summary enqueue, and maintenance status over stdio |
-| Python SDK | Client for the local daemon |
+| Python SDK | Binding-pinned client, reviewed candidate/migration workflows, multi-query evidence groups, guarded experience and reminder reads |
 | Candidate admission | Explicit review, durable event deduplication, exact fact-key corrections |
 | Freshness | Durable change cursor, recall manifest, current-context validation |
+| History and impact (schema 5) | Paginated recorded-time evidence and affected registered dependencies; withdrawal gates apply to historical bodies |
 | Backup and restore | Consistent SQLite snapshot; new-path, new-history restoration |
 | Markdown and host adapters | Managed projections, Claude Code migration/hooks, local ChatGPT/Codex hooks, Crew Gateway bridge, OpenCode V1 plugin |
 | Experimental grouping | Deterministic grouping rules for later consolidation experiments |
 
-The record store and lexical retrieval work without models. Semantic retrieval
-and generated summaries require local model servers that you run and configure;
+The record store and lexical retrieval work without models. Learned semantic
+retrieval and generated summaries require model providers that you run and configure;
 RecallLedger does not download weights or select a cloud provider. Exact cosine
 search scans eligible vectors rather than using an ANN index.
+The SDK also provides an explicitly selected offline word/character rule encoder;
+its alias matching is a bounded baseline, not verified general semantic retrieval.
 
 Repository-state validation, learned memory selection, cost-optimal repair
 selection, and benchmark quality results remain future work. Generated summaries
@@ -318,6 +333,19 @@ The Python SDK has no third-party runtime dependencies:
 PYTHONPATH=sdk/python python3 examples/python_agent.py \
   --socket .local-state/memory.sock
 ```
+
+The source SDK also has a standalone workflow command. It uses an existing
+daemon and a previously verified binding file; it does not install a host or
+run remembered instructions:
+
+```sh
+PYTHONPATH=sdk/python python3 -m recall_ledger.memory_workflows --help
+```
+
+The [workflow guide](docs/semantic-retrieval-migration.md) specifies request
+files, exact review/apply steps, multi-evidence budgets, explicit degradation,
+and migration limitations. The [history guide](docs/history-and-impact.md)
+describes `timeline`, `impact_preview`, and schema 5 compatibility.
 
 ```python
 from recall_ledger import Client

@@ -14,6 +14,7 @@ use uuid::Uuid;
 
 mod changes;
 mod fidelity;
+mod history;
 mod ingestion;
 mod maintenance;
 pub mod models;
@@ -24,7 +25,7 @@ pub mod runtime;
 mod vector;
 
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
-const SCHEMA: i64 = 4;
+const SCHEMA: i64 = 5;
 const MAX_BODY: usize = 65_536;
 const MAX_INPUTS: usize = 64;
 const MAX_ANCESTORS: usize = 10_000;
@@ -138,7 +139,7 @@ impl Store {
         connection.busy_timeout(Duration::from_secs(5))?;
         connection.execute_batch("PRAGMA foreign_keys=ON; PRAGMA synchronous=FULL;")?;
         let version: i64 = connection.query_row("PRAGMA user_version", [], |r| r.get(0))?;
-        if ![0, 1, 2, 3, SCHEMA].contains(&version) {
+        if ![0, 1, 2, 3, 4, SCHEMA].contains(&version) {
             return Err(Error::new(
                 "schema_mismatch",
                 "Unsupported database schema version.",
@@ -146,7 +147,7 @@ impl Store {
         }
         let tx = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
         let locked_version: i64 = tx.query_row("PRAGMA user_version", [], |r| r.get(0))?;
-        if ![0, 1, 2, 3, SCHEMA].contains(&locked_version) {
+        if ![0, 1, 2, 3, 4, SCHEMA].contains(&locked_version) {
             return Err(Error::new(
                 "schema_mismatch",
                 "Unsupported database schema version.",
@@ -220,6 +221,9 @@ impl Store {
         if locked_version < 4 {
             portable::schema(&tx)?;
         }
+        if locked_version < 5 {
+            history::schema(&tx)?;
+        }
         tx.pragma_update(None, "user_version", SCHEMA)?;
         tx.commit()?;
         connection.pragma_update(None, "journal_mode", "WAL")?;
@@ -252,6 +256,8 @@ impl Store {
         let allowed: &[&str] = match method {
             "binding" | "status" | "export" => &[],
             "changes" => &["after", "limit"],
+            "impact_preview" => &["id", "expected_revision"],
+            "timeline" => &["query", "as_of", "limit", "cursor"],
             "validate_context" => &["manifest"],
             "remember" => &[
                 "body",
@@ -260,10 +266,17 @@ impl Store {
                 "volatility",
                 "valid_from",
                 "valid_until",
+                "occurred_at",
                 "idempotency_key",
             ],
             "inspect" => &["id", "history"],
-            "revise" => &["id", "expected_revision", "body", "idempotency_key"],
+            "revise" => &[
+                "id",
+                "expected_revision",
+                "body",
+                "occurred_at",
+                "idempotency_key",
+            ],
             "retract" => &["id", "expected_revision", "idempotency_key"],
             "recall" => &[
                 "query",
@@ -364,6 +377,9 @@ impl Store {
                 }
                 parse_stored(&receipt)?
             } else {
+                if matches!(method, "remember" | "revise") {
+                    optional_time(&arguments, "occurred_at")?;
+                }
                 let mut receipt = mutate(&tx, namespace, method, &arguments, at)?;
                 // Empty queue polls have no side effect, and must not grow the
                 // durable receipt table on every background worker tick.
@@ -387,6 +403,7 @@ impl Store {
                 )?;
                 receipt["commit_token"] = json!(commit_token(&tx)?);
                 receipt["durable"] = json!(true);
+                history::finalize(&tx, namespace, method, &arguments, &receipt, at)?;
                 changes::append(&tx, namespace, method, &receipt)?;
                 tx.execute(
                     "INSERT INTO operations(namespace,method,key,request_hash,receipt) VALUES(?1,?2,?3,?4,?5)",
@@ -954,6 +971,7 @@ fn read(db: &Connection, ns: &str, method: &str, v: &Value, at: i64) -> Result<V
                 "lineage":true,"conditional_publish":true,"restore":true,
                 "candidate_admission":true,"exact_fact_identity":true,"change_feed":true,
                 "portable_bundle":true,"transactional_import":true,
+                "impact_preview":true,"timeline":true,"historical_as_of":true,
                 "managed_projection":true,"physical_erasure":false}}),
             )
         }
@@ -991,6 +1009,8 @@ fn read(db: &Connection, ns: &str, method: &str, v: &Value, at: i64) -> Result<V
         }
         "recall" => recall(db, ns, v, at),
         "changes" => changes::read(db, ns, v),
+        "impact_preview" => history::impact_preview(db, ns, v, at),
+        "timeline" => history::timeline(db, ns, v, at),
         "validate_context" => validate_context(db, ns, v, at),
         "job" => {
             let id = string(v, "job_id")?;

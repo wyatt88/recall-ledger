@@ -9,10 +9,12 @@ use std::io::{self, BufRead, Write};
 use std::path::Path;
 
 pub const PROTOCOL_VERSION: &str = "2025-11-25";
-const TOOLS: [&str; 17] = [
+const TOOLS: [&str; 19] = [
     "remember",
     "recall",
     "inspect",
+    "impact_preview",
+    "timeline",
     "revise",
     "retract",
     "summarize",
@@ -89,6 +91,7 @@ fn tools() -> Value {
                 "volatility": {"type": "string", "enum": ["stable", "normal", "volatile"]},
                 "valid_from": {"type": "integer"},
                 "valid_until": {"type": "integer"},
+                "occurred_at": {"type": ["integer","null"], "minimum": 0},
                 "idempotency_key": {"type": "string", "minLength": 1}
             }), &["body", "idempotency_key"], false),
         tool("recall",
@@ -103,11 +106,24 @@ fn tools() -> Value {
         tool("inspect",
             "Read one record. Optional history is historical evidence, not current project state. Retracted content is never returned.",
             json!({"id": {"type": "string"}, "history": {"type": "boolean"}}), &["id"], true),
+        tool("impact_preview",
+            "Read a change explanation with permitted original sources, revision history and registered descendants that a correction or withdrawal would invalidate. Performs no mutation. Unknown provenance is not inferred. Recheck expected_revision when actually writing.",
+            json!({"id":{"type":"string"},"expected_revision":{"type":"integer","minimum":1}}),
+            &["id"],true),
+        tool("timeline",
+            "Read paginated record history. as_of is an inclusive Unix-second cutoff for what had been recorded, not occurrence time. Withdrawn bodies and invalid ancestor versions remain hidden. Historical-only text must not become current memory. Repeat the same query/as_of with next_cursor; a changed ledger requires restarting.",
+            json!({
+                "query":{"type":"string","maxLength":4096},
+                "as_of":{"type":["integer","null"],"minimum":0},
+                "limit":{"type":"integer","minimum":1,"maximum":100},
+                "cursor":{"type":"string","maxLength":8192}
+            }), &[],true),
         tool("revise",
             "Correct a record using its current expected_revision. Atomically invalidates dependent artifacts. Use for an explicit correction, not an unsupported inference.",
             json!({
                 "id": {"type": "string"}, "expected_revision": {"type": "integer", "minimum": 1},
                 "body": {"type": "string", "minLength": 1}, "idempotency_key": {"type": "string", "minLength": 1}
+                ,"occurred_at": {"type":["integer","null"],"minimum":0}
             }), &["id", "expected_revision", "body", "idempotency_key"], false),
         tool("retract",
             "Withdraw a record and its dependent artifacts from public reads. Requires the current expected_revision. This does not promise secure erasure of SQLite pages or backups.",
