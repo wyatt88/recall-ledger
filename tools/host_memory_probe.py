@@ -7,21 +7,25 @@ bindings and refuses to initialize a missing database.
 """
 
 import argparse
+from contextlib import closing, contextmanager
 import fcntl
 import hashlib
 import importlib
 import json
 import os
 from pathlib import Path
+import shutil
 import sqlite3
+import stat
 import subprocess
 import sys
+import tempfile
 import time
 import uuid
 
 SCHEMA = "recall-ledger.host-memory-probe/1"
 ADAPTERS = ("claude-code", "chatgpt", "kirocrew")
-DATABASE_SCHEMA = 4
+DATABASE_SCHEMA = 5
 
 
 class ProbeError(Exception):
@@ -80,7 +84,123 @@ def load_sdk(root):
     return modules
 
 
-def verify_existing_database(path, expected_binding, expected_pending=None):
+def normalized_schema_sql(sql):
+    """Ignore indentation, but preserve literals and quoted identifiers."""
+    result, quote, pending_space = [], None, False
+    index = 0
+    while index < len(sql):
+        char = sql[index]
+        if quote:
+            result.append(char)
+            if char == quote:
+                if index + 1 < len(sql) and sql[index + 1] == quote:
+                    index += 1
+                    result.append(sql[index])
+                else:
+                    quote = None
+        elif char.isspace():
+            pending_space = bool(result)
+        else:
+            if pending_space:
+                result.append(" ")
+                pending_space = False
+            result.append(char)
+            quote = "]" if char == "[" else char if char in "'\"`" else None
+        index += 1
+    return "".join(result)
+
+
+def schema_inventory(db):
+    """Include constraints, indexes, triggers and FTS options, not just names."""
+    inventory = {}
+    for name, kind, table, sql in db.execute(
+            "SELECT name,type,tbl_name,sql FROM sqlite_master "
+            "WHERE substr(name,1,7) != 'sqlite_' ORDER BY name"):
+        columns = None
+        if kind == "table":
+            columns = db.execute(
+                'SELECT name,type,"notnull",dflt_value,pk,hidden '
+                'FROM pragma_table_xinfo(?) ORDER BY cid', (name,)).fetchall()
+        inventory[name] = (kind, table, normalized_schema_sql(sql or ""), columns)
+    return inventory
+
+
+def reference_schema(binary):
+    """Initialize only a new temporary DB with the fingerprint-pinned binary."""
+    with tempfile.TemporaryDirectory(prefix="rl-probe-schema-") as directory:
+        path = Path(directory) / "reference.db"
+        result = subprocess.run(
+            [str(binary), "--db", str(path), "--namespace", "probe-schema-reference",
+             "call", "status", "--params", "{}"],
+            stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+            timeout=15, check=False,
+        )
+        if result.returncode or not path.is_file():
+            raise ProbeError("reference_database_creation_failed")
+        db = sqlite3.connect(path.as_uri() + "?mode=ro", uri=True, timeout=2)
+        try:
+            db.execute("PRAGMA query_only=ON")
+            db.execute("PRAGMA trusted_schema=OFF")
+            if db.execute("PRAGMA user_version").fetchone()[0] != DATABASE_SCHEMA:
+                raise ProbeError("reference_database_schema_mismatch")
+            return schema_inventory(db)
+        finally:
+            db.close()
+
+
+def file_signature(info):
+    return (info.st_dev, info.st_ino, info.st_mode, info.st_size,
+            info.st_mtime_ns, info.st_ctime_ns)
+
+
+@contextmanager
+def readonly_snapshot(path):
+    """Never let SQLite create WAL/SHM files beside the supplied database.
+
+    The fixture's daemon is stopped. Copy its main file and any committed WAL;
+    immutable=1 on the original would silently ignore uncheckpointed records.
+    Observed file changes during verification are rejected, not retried. This
+    is not an atomic snapshot against an unrelated active writer.
+    """
+    suffixes = ("", "-wal", "-journal", "-shm")
+    signatures = {}
+    with tempfile.TemporaryDirectory(prefix="rl-probe-read-") as directory:
+        copy = Path(directory) / "memory.db"
+        for suffix in suffixes:
+            source = Path(str(path) + suffix)
+            try:
+                fd = os.open(source, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+            except FileNotFoundError:
+                if suffix:
+                    signatures[suffix] = None
+                    continue
+                raise ProbeError("resume_database_missing_or_symlink")
+            except OSError as exc:
+                raise ProbeError("resume_database_sidecar_or_path_invalid") from exc
+            with os.fdopen(fd, "rb") as stream:
+                before = os.fstat(stream.fileno())
+                if not stat.S_ISREG(before.st_mode):
+                    raise ProbeError("resume_database_sidecar_or_path_invalid")
+                # SQLite rebuilds the private copy's shared-memory index.
+                if suffix != "-shm":
+                    with Path(str(copy) + suffix).open("xb") as output:
+                        shutil.copyfileobj(stream, output)
+                if file_signature(before) != file_signature(os.fstat(stream.fileno())):
+                    raise ProbeError("resume_database_changed_during_check")
+                signatures[suffix] = file_signature(before)
+        try:
+            yield copy
+        finally:
+            for suffix in suffixes:
+                try:
+                    current = file_signature(Path(str(path) + suffix).lstat())
+                except FileNotFoundError:
+                    current = None
+                if current != signatures[suffix]:
+                    raise ProbeError("resume_database_changed_during_check")
+
+
+def verify_existing_database(path, expected_binding, expected_pending=None, *, expected_schema):
     """Read-only checks happen before Rust can migrate/initialize any file."""
     path = Path(path)
     if not path.is_file() or path.is_symlink():
@@ -91,20 +211,52 @@ def verify_existing_database(path, expected_binding, expected_pending=None):
     if not expected_binding:
         raise ProbeError("resume_expected_binding_missing")
     try:
-        db = sqlite3.connect(path.resolve().as_uri() + "?mode=ro", uri=True, timeout=2)
-        try:
+        with readonly_snapshot(path) as copy, closing(sqlite3.connect(
+                copy.as_uri() + "?mode=ro", uri=True, timeout=2)) as db:
             db.execute("PRAGMA query_only=ON")
             db.execute("PRAGMA trusted_schema=OFF")
             if db.execute("PRAGMA user_version").fetchone()[0] != DATABASE_SCHEMA:
                 raise ProbeError("resume_database_schema_mismatch")
             tables = {row[0] for row in db.execute("SELECT name FROM sqlite_master WHERE type='table'")}
-            if not {"meta", "records", "revisions", "ingestion_candidates", "operations"}.issubset(tables):
+            if not {"meta", "records", "revisions", "ingestion_candidates",
+                    "operations", "history_events"}.issubset(tables):
                 raise ProbeError("resume_database_required_tables_missing")
+            if schema_inventory(db) != expected_schema:
+                raise ProbeError("resume_database_structure_mismatch")
             if db.execute("PRAGMA quick_check").fetchall() != [("ok",)]:
                 raise ProbeError("resume_database_integrity_failed")
+            if db.execute("PRAGMA foreign_key_check").fetchone() is not None:
+                raise ProbeError("resume_database_foreign_key_failed")
             identity = db.execute("SELECT value FROM meta WHERE key='store_id'").fetchone()
             if identity != (expected_binding["history_id"],):
                 raise ProbeError("resume_database_history_mismatch")
+            try:
+                uuid.UUID(identity[0])
+                sequence = db.execute("SELECT value FROM meta WHERE key='sequence'").fetchone()[0]
+                if (len(identity[0]) != 36 or not isinstance(sequence, str)
+                        or not sequence.isascii() or not sequence.isdecimal()
+                        or not 0 <= int(sequence) < 2**63):
+                    raise ValueError()
+            except (ValueError, TypeError, IndexError) as exc:
+                raise ProbeError("resume_database_history_metadata_invalid") from exc
+            # This probe resumes its own fresh history, never a restored or
+            # migrated replacement. Every captured event must be finalized in
+            # that history, including events from the foreign-namespace fixture.
+            if db.execute(
+                    """SELECT 1 FROM history_events h JOIN records r ON r.id=h.record_id
+                       WHERE h.namespace!=r.namespace OR h.revision<1 OR h.revision>r.revision
+                          OR h.finalized!=1 OR h.history_id IS NOT ?
+                          OR typeof(h.commit_sequence)!='integer'
+                          OR h.commit_sequence<1 OR h.commit_sequence>?
+                          OR h.time_quality!='local_commit' OR h.method IN ('pending','legacy')
+                       LIMIT 1""", (identity[0], int(sequence))).fetchone() is not None:
+                raise ProbeError("resume_database_history_events_invalid")
+            if db.execute(
+                    """SELECT 1 FROM revisions r WHERE NOT EXISTS(
+                       SELECT 1 FROM history_events h WHERE h.record_id=r.id
+                         AND h.namespace=r.namespace AND h.revision=r.revision
+                         AND h.event_type='revision') LIMIT 1""").fetchone() is not None:
+                raise ProbeError("resume_database_history_events_missing")
             if db.execute("SELECT 1 FROM records WHERE namespace=? LIMIT 1",
                           (expected_binding["namespace"],)).fetchone() is None:
                 raise ProbeError("resume_database_namespace_missing")
@@ -120,8 +272,6 @@ def verify_existing_database(path, expected_binding, expected_pending=None):
                             or not isinstance(row[2], str)
                             or hashlib.sha256(row[2].encode()).hexdigest() != prior["body_sha256"]):
                         raise ProbeError("resume_original_pending_candidate_changed")
-        finally:
-            db.close()
     except sqlite3.Error as exc:
         raise ProbeError("resume_database_readonly_check_failed") from exc
 
@@ -136,12 +286,16 @@ class Daemon:
         self.client = None
         self.expected_binding = expected_binding
         self.expected_pending = expected_pending
+        self.expected_schema = None
 
     def start(self, *, existing, namespace=None):
         if self.process is not None:
             raise ProbeError("daemon_already_running")
         if existing:
-            verify_existing_database(self.database, self.expected_binding, self.expected_pending)
+            if self.expected_schema is None:
+                self.expected_schema = reference_schema(self.binary)
+            verify_existing_database(self.database, self.expected_binding, self.expected_pending,
+                                     expected_schema=self.expected_schema)
         if len(os.fsencode(self.socket)) > 100:
             raise ProbeError("socket_path_too_long")
         if self.socket.is_symlink():
